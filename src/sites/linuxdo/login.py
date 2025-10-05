@@ -15,6 +15,10 @@ if str(project_root) not in sys.path:
 
 from playwright.sync_api import Page
 from src.core.base import LoginAutomation
+from src.core.logger import setup_logger
+from src.core.paths import get_project_paths
+
+logger = setup_logger("linuxdo", get_project_paths().logs / "linuxdo.log")
 
 
 class LinuxdoLogin(LoginAutomation):
@@ -32,15 +36,15 @@ class LinuxdoLogin(LoginAutomation):
     ) -> bool:
         cookie_path = self.cookie_manager.get_cookie_path(self.site_name)
         if not cookie_path.exists():
-            print(f"Cookie 文件不存在: {cookie_path}")
+            logger.info(f"Cookie 文件不存在: {cookie_path}")
             return False
 
-        print("\n尝试使用 Cookie 快速登录...")
+        logger.info("尝试使用 Cookie 快速登录...")
         success = super().try_cookie_login(page, verify_url=verify_url, expire_days=expire_days)
         if success:
-            print("Cookie 登录成功")
+            logger.info("Cookie 登录成功")
         else:
-            print("Cookie 已过期，需要重新登录")
+            logger.info("Cookie 已过期，需要重新登录")
         return success
 
     def verify_login(self, page: Page) -> bool:
@@ -48,22 +52,22 @@ class LinuxdoLogin(LoginAutomation):
             page.wait_for_timeout(2000)
             current_url = page.url
             if '/login' not in current_url:
-                print("已登录，URL 已跳转")
+                logger.info("已登录，URL 已跳转")
                 return True
 
             login_form = page.locator('form, input[name="login"], input[placeholder*="邮箱"]')
             if login_form.count() == 0:
-                print("已登录，无登录表单")
+                logger.info("已登录，无登录表单")
                 return True
 
             welcome_text = page.locator('text=欢迎回来')
             if welcome_text.count() == 0:
-                print("已登录，未发现欢迎文本")
+                logger.info("已登录，未发现欢迎文本")
                 return True
 
             return False
         except Exception as exc:
-            print(f"验证登录时出错: {exc}")
+            logger.warning(f"验证登录时出错: {exc}")
             try:
                 if '/login' not in page.url:
                     return True
@@ -72,21 +76,21 @@ class LinuxdoLogin(LoginAutomation):
             return False
 
     def login_with_credentials(self, page: Page, email: str, password: str) -> bool:
-        print("\n使用账号密码登录...")
+        logger.info("使用账号密码登录...")
 
-        print("点击登录按钮...")
+        logger.info("点击登录按钮...")
         login_button = page.locator('#login-button')
         login_button.click()
 
-        print(f"填写账号: {email}")
+        logger.info(f"填写账号: {email}")
         email_input = page.locator('#login-account-name, input[name=\"login\"]')
         email_input.fill(email)
 
-        print("填写密码...")
+        logger.info("填写密码...")
         password_input = page.locator('#login-account-password, input[name=\"password\"]').first
         password_input.fill(password)
 
-        print("提交登录...")
+        logger.info("提交登录...")
         submitted = False
         # 优先在表单内选择提交按钮
         try:
@@ -110,27 +114,27 @@ class LinuxdoLogin(LoginAutomation):
                     submitted = False
 
         if not submitted:
-            print("未能找到可用的提交按钮")
+            logger.error("未能找到可用的提交按钮")
             return False
 
-        print("等待登录完成...")
+        logger.info("等待登录完成...")
         page.wait_for_timeout(3000)
 
         if self.verify_login(page):
-            print("登录成功")
+            logger.info("登录成功")
             return True
 
-        print("登录失败，正在保存截图...")
+        logger.error("登录失败，正在保存截图...")
         return False
 
     def do_login(self, page: Page, **credentials) -> bool:
         email = credentials.get('email')
         password = credentials.get('password')
         if not email or not password:
-            print("未提供登录凭据，无法登录")
+            logger.error("未提供登录凭据，无法登录")
             return False
 
-        print("正在打开 LinuxDO 登录页面...")
+        logger.info("正在打开 LinuxDO 登录页面...")
         page.goto('https://linux.do/login', timeout=60000)
         page.wait_for_load_state('domcontentloaded')
 
@@ -143,7 +147,7 @@ class LinuxdoLogin(LoginAutomation):
         try:
             current_url = page.url
             if 'chrome-error' in current_url or 'about:' in current_url:
-                print("页面 URL 异常，尝试重新载入首页...")
+                logger.warning("页面 URL 异常，尝试重新载入首页...")
                 try:
                     page.goto('https://linux.do/', timeout=60000, wait_until='domcontentloaded')
                     page.wait_for_timeout(2000)
@@ -151,13 +155,13 @@ class LinuxdoLogin(LoginAutomation):
                 except Exception:
                     pass
 
-            print("\n论坛首页已加载")
-            print(f"当前 URL: {current_url}")
+            logger.info("论坛首页已加载")
+            logger.info(f"当前 URL: {current_url}")
 
-            print("\n保留会话，等待 10 秒...")
-            time.sleep(10)
+            logger.info("保留会话，等待 3 秒以稳定会话状态...")
+            page.wait_for_timeout(3000)
         except Exception as exc:
-            print(f"登录后处理出错: {exc}")
+            logger.error(f"登录后处理出错: {exc}")
 
 
 def login_to_linuxdo(
@@ -176,7 +180,7 @@ def login_to_linuxdo(
             password=password,
         )
     except Exception as exc:
-        print(f"发生异常: {exc}")
+        logger.error(f"发生异常: {exc}")
         automation.browser_manager.save_error_screenshot(
             automation.page,
             'linuxdo_error_screenshot.png',
@@ -185,10 +189,19 @@ def login_to_linuxdo(
 
 
 if __name__ == "__main__":
-    EMAIL = "yanglanshi@qq.com"     # 邮箱/用户名
-    PASSWORD = "yls123123."          # 密码
+    import os
+
+    # 从环境变量读取凭据（避免硬编码）
+    # 使用方法: export LINUXDO_EMAIL="your_email" LINUXDO_PASSWORD="your_password"
+    EMAIL = os.getenv('LINUXDO_EMAIL', '')     # 邮箱/用户名
+    PASSWORD = os.getenv('LINUXDO_PASSWORD', '')  # 密码
     USE_COOKIE = True                # 是否优先使用 cookie 登录
     HEADLESS = False                 # 是否无头模式运行
+
+    if not EMAIL or not PASSWORD:
+        logger.warning("未设置 LINUXDO_EMAIL 或 LINUXDO_PASSWORD 环境变量")
+        logger.warning("如果没有有效的 Cookie，登录将失败")
+        logger.info("请使用: export LINUXDO_EMAIL='your_email' LINUXDO_PASSWORD='your_password'")
 
     login_to_linuxdo(
         email=EMAIL,

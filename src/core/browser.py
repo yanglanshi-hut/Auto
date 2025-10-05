@@ -30,14 +30,27 @@ class BrowserManager:
         try:
             if browser is not None:
                 browser.close()
-        except Exception:
-            pass
+        except Exception as e:
+            # Log but don't raise - cleanup should be best-effort
+            try:
+                from src.core.logger import setup_logger
+                from src.core.paths import get_project_paths
+                logger = setup_logger("browser", get_project_paths().logs / "browser.log")
+                logger.warning(f"Failed to close browser: {e}")
+            except Exception:
+                pass
         finally:
             if self._playwright_cm is not None:
                 try:
                     self._playwright_cm.__exit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as e:
+                    try:
+                        from src.core.logger import setup_logger
+                        from src.core.paths import get_project_paths
+                        logger = setup_logger("browser", get_project_paths().logs / "browser.log")
+                        logger.warning(f"Failed to stop Playwright: {e}")
+                    except Exception:
+                        pass
                 self._playwright_cm = None
                 self._playwright = None
 

@@ -50,8 +50,8 @@ if __name__ == "__main__":
         USERNAME = sys.argv[1]
         PASSWORD = sys.argv[2]
     else:
-        USERNAME = "yls"
-        PASSWORD = "yls123123"
+        USERNAME = "your_username"
+        PASSWORD = "your_password"
 
     login_to_openi(USERNAME, PASSWORD)
 ```
