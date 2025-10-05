@@ -1,0 +1,36 @@
+# 用户配置文件（包含敏感信息）
+users.json
+
+# Cookie 文件（包含会话信息）
+cookies_*.json
+
+# 错误截图
+error_screenshot*.png
+
+# 日志文件
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Playwright
+playwright-report/
+test-results/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 环境变量
+.env
+.env.local

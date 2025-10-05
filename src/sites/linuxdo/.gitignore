@@ -1,0 +1,30 @@
+# Cookie 文件（包含登录凭据）
+linuxdo_cookies.json
+
+# 错误截图
+linuxdo_error_screenshot.png
+
+# Playwright 生成的文件
+.playwright-mcp/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 虚拟环境
+venv/
+env/
+ENV/
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统文件
+.DS_Store
+Thumbs.db
