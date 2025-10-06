@@ -71,45 +71,37 @@ class LinuxdoLogin(LoginAutomation):
                 pass
             return False
 
+    def _submit_login_form(self, page: Page, password_input) -> bool:
+        """尝试多种方式提交登录表单"""
+        submit_strategies = [
+            lambda: page.locator('form:has(#login-account-name) button[type="submit"], form:has(input[name="login"]) button[type="submit"]').first.click(timeout=10000),
+            lambda: page.locator('button:has-text("登录"):visible, #login-button.login:visible, .login-button:visible, button:has-text("Log in"):visible, button:has-text("Login"):visible').first.click(timeout=8000),
+            lambda: password_input.press('Enter'),
+        ]
+
+        for strategy in submit_strategies:
+            try:
+                strategy()
+                return True
+            except Exception:
+                continue
+        return False
+
     def login_with_credentials(self, page: Page, email: str, password: str) -> bool:
         logger.info("使用账号密码登录...")
 
         logger.info("点击登录按钮...")
-        login_button = page.locator('#login-button')
-        login_button.click()
+        page.locator('#login-button').click()
 
         logger.info(f"填写账号: {email}")
-        email_input = page.locator('#login-account-name, input[name=\"login\"]')
-        email_input.fill(email)
+        page.locator('#login-account-name, input[name="login"]').fill(email)
 
         logger.info("填写密码...")
-        password_input = page.locator('#login-account-password, input[name=\"password\"]').first
+        password_input = page.locator('#login-account-password, input[name="password"]').first
         password_input.fill(password)
 
         logger.info("提交登录...")
-        submitted = False
-        # 优先在表单内选择提交按钮
-        try:
-            submit_in_form = page.locator('form:has(#login-account-name) button[type=\"submit\"], form:has(input[name=\"login\"]) button[type=\"submit\"]').first
-            submit_in_form.wait_for(state='visible', timeout=10000)
-            submit_in_form.click()
-            submitted = True
-        except Exception:
-            # 否则尝试通过常见选择器点击
-            try:
-                submit_button = page.locator('button:has-text("登录"):visible, #login-button.login:visible, .login-button:visible, button:has-text("Log in"):visible, button:has-text("Login"):visible').first
-                submit_button.wait_for(state='visible', timeout=8000)
-                submit_button.click()
-                submitted = True
-            except Exception:
-                # 最后一步，尝试使用回车提交
-                try:
-                    password_input.press('Enter')
-                    submitted = True
-                except Exception:
-                    submitted = False
-
-        if not submitted:
+        if not self._submit_login_form(page, password_input):
             logger.error("未能找到可用的提交按钮")
             return False
 

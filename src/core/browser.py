@@ -25,32 +25,29 @@ class BrowserManager:
         self._playwright = self._playwright_cm.__enter__()
         return self._playwright.chromium.launch(headless=headless, **launch_kwargs)
 
+    def _log_warning(self, message: str) -> None:
+        """安全地记录警告日志"""
+        try:
+            from src.core.logger import setup_logger
+            from src.core.paths import get_project_paths
+            logger = setup_logger("browser", get_project_paths().logs / "browser.log")
+            logger.warning(message)
+        except Exception:
+            pass
+
     def close(self, browser) -> None:
         """安全地关闭浏览器并停止 Playwright。"""
         try:
             if browser is not None:
                 browser.close()
         except Exception as e:
-            # 记录日志但不抛出异常——清理应尽力而为
-            try:
-                from src.core.logger import setup_logger
-                from src.core.paths import get_project_paths
-                logger = setup_logger("browser", get_project_paths().logs / "browser.log")
-                logger.warning(f"Failed to close browser: {e}")
-            except Exception:
-                pass
+            self._log_warning(f"Failed to close browser: {e}")
         finally:
             if self._playwright_cm is not None:
                 try:
                     self._playwright_cm.__exit__(None, None, None)
                 except Exception as e:
-                    try:
-                        from src.core.logger import setup_logger
-                        from src.core.paths import get_project_paths
-                        logger = setup_logger("browser", get_project_paths().logs / "browser.log")
-                        logger.warning(f"Failed to stop Playwright: {e}")
-                    except Exception:
-                        pass
+                    self._log_warning(f"Failed to stop Playwright: {e}")
                 self._playwright_cm = None
                 self._playwright = None
 
