@@ -28,7 +28,7 @@ def main() -> None:
         run_duration = config.get('run_duration', 15)
         headless = config.get('headless', False)
         use_cookies = config.get('use_cookies', True)
-        cookie_expire_days = config.get('cookie_expire_days', 7)
+        cookie_expire_days = config.get('cookie_expire_days', 30)
 
         total_users = len(users)
         success_count = 0

@@ -30,7 +30,7 @@ class OpeniLogin(LoginAutomation):
         task_name: str = 'image',
         run_duration: int = 15,
         use_cookies: bool = True,
-        cookie_expire_days: int = 7,
+        cookie_expire_days: int = 30,
     ) -> None:
         self.username = username
         self.task_name = task_name

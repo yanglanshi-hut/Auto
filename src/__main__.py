@@ -169,7 +169,7 @@ def _handle_openi(args: argparse.Namespace) -> int:
     config = cfg.get("config", {})
     task_name: str = config.get("task_name", "image")
     run_duration: int = int(config.get("run_duration", 15))
-    cookie_expire_days: int = int(config.get("cookie_expire_days", 7))
+    cookie_expire_days: int = int(config.get("cookie_expire_days", 30))
 
     use_cookie = not args.no_cookie
 

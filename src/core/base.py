@@ -24,7 +24,7 @@ class LoginAutomation(abc.ABC):
         cookie_dir: Optional[Path] = None,
         browser_kwargs: Optional[Dict[str, Any]] = None,
         context_kwargs: Optional[Dict[str, Any]] = None,
-        cookie_expire_days: int = 7,
+        cookie_expire_days: int = 30,
     ) -> None:
         self.site_name = site_name
         self.headless = headless

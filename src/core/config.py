@@ -12,7 +12,7 @@
        "run_duration": 15,
        "headless": false,
        "use_cookies": true,
-       "cookie_expire_days": 7
+       "cookie_expire_days": 30
      },
      "users": [
        {"site": "openi", "username": "u", "password": "p"},
@@ -30,8 +30,8 @@
      },
      "config": {
        "openi": {"task_name": "image", "run_duration": 15, ...},
-       "linuxdo": {"cookie_expire_days": 7},
-       "anyrouter": {"cookie_expire_days": 7}
+       "linuxdo": {"cookie_expire_days": 30},
+       "anyrouter": {"cookie_expire_days": 30}
      }
    }
 
