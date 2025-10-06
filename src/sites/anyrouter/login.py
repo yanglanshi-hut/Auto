@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-import sys
 import time
 from pathlib import Path
 from typing import Optional
 
-# 将项目根目录加入 Python 路径（指向 auto-refactored/）
-project_root = Path(__file__).resolve().parents[3]
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+# 统一通过 `python -m src` 启动，无需修改 sys.path
 
 from playwright.sync_api import Page
 
 from src.core.base import LoginAutomation
 from src.core.logger import setup_logger
 from src.core.paths import get_project_paths
+from src.core.config import UnifiedConfigManager
 
 logger = setup_logger("anyrouter", get_project_paths().logs / "anyrouter.log")
 
@@ -264,13 +261,23 @@ class AnyrouterLogin(LoginAutomation):
         if auth_page.locator('#login-account-name, input[name="login"]').count() == 0:
             return True
 
-        import os
-        email = os.getenv('LINUXDO_EMAIL', '')
-        password = os.getenv('LINUXDO_PASSWORD', '')
+        # 优先从统一配置管理器获取凭据，保持环境变量回退
+        email = ''
+        password = ''
+        try:
+            config_mgr = UnifiedConfigManager()
+            creds = config_mgr.get_credentials('anyrouter', fallback_env=True)
+            email = creds.get('email', '')
+            password = creds.get('password', '')
+        except Exception:
+            # 兜底：直接从环境变量读取（支持 ANYROUTER_* 或 LINUXDO_*）
+            import os
+            email = os.getenv('ANYROUTER_EMAIL') or os.getenv('LINUXDO_EMAIL', '')
+            password = os.getenv('ANYROUTER_PASSWORD') or os.getenv('LINUXDO_PASSWORD', '')
 
         if not email or not password:
-            logger.error("未设置 LINUXDO_EMAIL 或 LINUXDO_PASSWORD 环境变量")
-            logger.error("AnyRouter OAuth 需要 LinuxDO 凭据进行授权")
+            logger.error("未提供 LinuxDO/AnyRouter 凭据")
+            logger.error("请设置 ANYROUTER_EMAIL/ANYROUTER_PASSWORD 或 LINUXDO_EMAIL/LINUXDO_PASSWORD")
             return False
 
         try:

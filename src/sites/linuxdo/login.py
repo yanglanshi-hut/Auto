@@ -3,20 +3,16 @@ Linux.do Forum Login Automation Script
 使用 Playwright 自动登录 Linux.do 论坛，支持 Cookie 登录和快速登录
 """
 
-import sys
 import time
-from pathlib import Path
 from typing import Optional
 
-# 将项目根目录加入 Python 路径
-project_root = Path(__file__).resolve().parents[3]
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
+# 统一通过 `python -m src` 启动，无需修改 sys.path
 
 from playwright.sync_api import Page
 from src.core.base import LoginAutomation
 from src.core.logger import setup_logger
 from src.core.paths import get_project_paths
+from src.core.config import UnifiedConfigManager
 
 logger = setup_logger("linuxdo", get_project_paths().logs / "linuxdo.log")
 
@@ -171,6 +167,17 @@ def login_to_linuxdo(
     use_cookie: bool = True,
     headless: bool = False,
 ) -> bool:
+    # 如果未提供凭据，尝试从统一配置中获取（带环境变量回退）
+    if not email or not password:
+        try:
+            config_mgr = UnifiedConfigManager()
+            creds = config_mgr.get_credentials('linuxdo', fallback_env=True)
+            email = email or creds.get('email', '')
+            password = password or creds.get('password', '')
+        except Exception:
+            # 忽略配置读取异常；env 回退已在配置管理器中处理
+            pass
+
     automation = LinuxdoLogin(headless=headless)
     try:
         return automation.run(
@@ -189,19 +196,24 @@ def login_to_linuxdo(
 
 
 if __name__ == "__main__":
-    import os
+    # 优先从统一配置获取凭据，带环境变量回退（ANYROUTER/ LINUXDO 均可）
+    try:
+        cfg = UnifiedConfigManager()
+        _creds = cfg.get_credentials('linuxdo', fallback_env=True)
+        EMAIL = _creds.get('email', '')
+        PASSWORD = _creds.get('password', '')
+    except Exception:
+        import os  # 最后兜底到环境变量（保持向后兼容）
+        EMAIL = os.getenv('LINUXDO_EMAIL', '')
+        PASSWORD = os.getenv('LINUXDO_PASSWORD', '')
 
-    # 从环境变量读取凭据（避免硬编码）
-    # 使用方法: export LINUXDO_EMAIL="your_email" LINUXDO_PASSWORD="your_password"
-    EMAIL = os.getenv('LINUXDO_EMAIL', '')     # 邮箱/用户名
-    PASSWORD = os.getenv('LINUXDO_PASSWORD', '')  # 密码
-    USE_COOKIE = True                # 是否优先使用 cookie 登录
-    HEADLESS = False                 # 是否无头模式运行
+    USE_COOKIE = True   # 是否优先使用 cookie 登录
+    HEADLESS = False    # 是否无头模式运行
 
     if not EMAIL or not PASSWORD:
-        logger.warning("未设置 LINUXDO_EMAIL 或 LINUXDO_PASSWORD 环境变量")
+        logger.warning("未在配置或环境变量中找到 LinuxDO 凭据")
         logger.warning("如果没有有效的 Cookie，登录将失败")
-        logger.info("请使用: export LINUXDO_EMAIL='your_email' LINUXDO_PASSWORD='your_password'")
+        logger.info("可设置: export LINUXDO_EMAIL='your_email' LINUXDO_PASSWORD='your_password'")
 
     login_to_linuxdo(
         email=EMAIL,

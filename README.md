@@ -56,12 +56,45 @@ playwright install chromium
 
 ### 配置
 
-**OpenI 平台**：编辑 `config/users.json`（参考 `users.json.example`）
+推荐使用统一配置文件方式（所有站点均支持）。环境变量仍保留作为向后兼容的备用方案。
 
-**LinuxDO / AnyRouter**：设置环境变量
+**推荐方式**：使用 `config/users.json` 统一配置（所有站点）
+
+1. 复制配置模板：
 ```bash
+cp config/users.json.example config/users.json
+```
+
+2. 编辑 `config/users.json`：
+```json
+{
+  "credentials": {
+    "openi": [
+      {"username": "user1", "password": "pass1"}
+    ],
+    "linuxdo": [
+      {"email": "email@example.com", "password": "pass"}
+    ],
+    "anyrouter": [
+      {"email": "email@example.com", "password": "pass"}
+    ]
+  },
+  "config": {
+    "openi": {"task_name": "image", "run_duration": 15}
+  }
+}
+```
+
+**备选方式**：环境变量（向后兼容）
+
+```bash
+# LinuxDO / AnyRouter（任一可用）
 export LINUXDO_EMAIL="your_email@example.com"
 export LINUXDO_PASSWORD="your_password"
+
+# 或 AnyRouter 专用
+export ANYROUTER_EMAIL="your_email@example.com"
+export ANYROUTER_PASSWORD="your_password"
 ```
 
 ### 使用
@@ -128,24 +161,85 @@ class NewSiteLogin(LoginAutomation):
 
 ## 站点说明
 
+### LinuxDO
+- **登录方式**: 账号密码表单登录
+- **凭据配置**:
+  1. 优先：`config/users.json` - `credentials.linuxdo`
+  2. Fallback：环境变量 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
+- **特性**: Cookie 快速登录、自动处理登录表单
+
 ### AnyRouter
 - **登录方式**: LinuxDO OAuth 授权
-- **凭据**: 环境变量 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
+- **凭据配置**:
+  1. 优先：`config/users.json` - `credentials.anyrouter`
+  2. Fallback：环境变量 `ANYROUTER_EMAIL` / `ANYROUTER_PASSWORD` 或 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
 - **特性**: 自动处理授权弹窗、记住授权、导航到 API 令牌页
-
-### Linux.do
-- **登录方式**: 账号密码表单登录
-- **凭据**: 环境变量 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
-- **特性**: Cookie 快速登录、自动处理登录表单
 
 ### OpenI
 - **登录方式**: 账号密码登录
-- **凭据**: `config/users.json`
+- **凭据**: `config/users.json` - `credentials.openi` 或 `users`（旧格式）
 - **特性**:
   - 多用户批量处理
   - 云脑任务自动化（启动/停止任务赚取积分）
   - 每用户独立 Cookie 管理
   - 详细日志记录
+
+## 配置说明
+
+### 新旧格式对比
+
+新版统一格式（推荐）：
+```json
+{
+  "credentials": {
+    "openi":    [{"username": "u", "password": "p"}],
+    "linuxdo":  [{"email": "e", "password": "p"}],
+    "anyrouter": [{"email": "e", "password": "p"}]
+  },
+  "config": {
+    "openi": {"task_name": "image", "run_duration": 15},
+    "linuxdo": {"cookie_expire_days": 7},
+    "anyrouter": {"cookie_expire_days": 7}
+  }
+}
+```
+
+旧版 OpenI 专用格式（兼容保留，用于旧逻辑）：
+```json
+{
+  "users":  [{"username": "u", "password": "p"}],
+  "config": {"task_name": "image", "run_duration": 15}
+}
+```
+
+说明：当两种结构同时存在时，会优先读取统一格式中的 `credentials.openi`；仅在统一格式缺失时回退到旧版 `users`。
+
+### 环境变量 fallback 说明
+
+- LinuxDO: 优先读取 `config/users.json`，缺失时回退 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
+- AnyRouter: 优先读取 `config/users.json`，缺失时回退 `ANYROUTER_EMAIL` / `ANYROUTER_PASSWORD`，再回退 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
+- 优先级总原则：配置文件 > 环境变量（向后兼容）
+
+### 多用户配置示例
+
+```json
+{
+  "credentials": {
+    "openi": [
+      {"username": "user1", "password": "pass1"},
+      {"username": "user2", "password": "pass2"}
+    ],
+    "linuxdo": [
+      {"email": "user1@example.com", "password": "pass"},
+      {"email": "user2@example.com", "password": "pass"}
+    ]
+  },
+  "config": {
+    "openi": {"task_name": "image", "run_duration": 15},
+    "linuxdo": {"cookie_expire_days": 7}
+  }
+}
+```
 
 ## 许可证
 

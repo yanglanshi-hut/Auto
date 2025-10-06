@@ -1,26 +1,51 @@
 {
-  "config": {
-    "task_name": "image",
-    "run_duration": 15,
-    "headless": false,
-    "use_cookies": true,
-    "cookie_expire_days": 7
+  "_comment": "Unified configuration format (recommended). 'credentials' holds per-site account lists; 'config' holds per-site options. UnifiedConfigManager keeps backward compatibility with the old format.",
+  "credentials": {
+    "_comment": "Each site accepts an array to support multiple accounts; leave only one if not needed.",
+    "openi": [
+      {
+        "_comment": "OpenI uses 'username' + 'password'",
+        "username": "your_openi_username",
+        "password": "your_openi_password"
+      }
+    ],
+    "linuxdo": [
+      {
+        "_comment": "LinuxDO uses 'email' + 'password'",
+        "email": "your_linuxdo_email@example.com",
+        "password": "your_linuxdo_password"
+      }
+    ],
+    "anyrouter": [
+      {
+        "_comment": "AnyRouter uses 'email' + 'password' (LinuxDO OAuth flow may also be used).",
+        "email": "your_anyrouter_email@example.com",
+        "password": "your_anyrouter_password"
+      }
+    ]
   },
+  "config": {
+    "_comment": "Per-site runtime options. cookie_expire_days controls cookie reuse window.",
+    "openi": {
+      "task_name": "image",
+      "run_duration": 15,
+      "headless": false,
+      "use_cookies": true,
+      "cookie_expire_days": 7
+    },
+    "linuxdo": {
+      "cookie_expire_days": 7
+    },
+    "anyrouter": {
+      "cookie_expire_days": 7
+    }
+  }
+  ,
   "users": [
     {
-      "site": "openi",
+      "_comment": "Legacy OpenI format for backward compatibility with src.sites.openi.runner. If you use 'python -m src openi', keep this section.",
       "username": "your_openi_username",
       "password": "your_openi_password"
-    },
-    {
-      "site": "linuxdo",
-      "email": "your_linuxdo_email@example.com",
-      "password": "your_linuxdo_password"
-    },
-    {
-      "site": "anyrouter",
-      "email": "your_anyrouter_email@example.com",
-      "password": "your_anyrouter_password"
     }
   ]
 }
