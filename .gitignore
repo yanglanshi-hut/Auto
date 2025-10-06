@@ -4,6 +4,9 @@
 # 运行时数据目录（整个 data/ 目录都应该被忽略）
 data/
 
+# 日志目录
+logs/
+
 # Playwright 生成的文件
 **/.playwright-mcp/
 **/.playwright-debug/

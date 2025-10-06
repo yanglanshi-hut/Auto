@@ -73,7 +73,7 @@ cp config/users.json.example config/users.json
     "run_duration": 15,
     "headless": false,
     "use_cookies": true,
-    "cookie_expire_days": 7
+    "cookie_expire_days": 30
   },
   "users": [
     {"site": "openi", "username": "用户名1", "password": "密码1"},
@@ -119,6 +119,48 @@ python -m src linuxdo --no-cookie
 # 查看帮助
 python -m src --help
 ```
+
+## 生产环境部署
+
+- 目标：多用户 Cookie 批量管理与定时刷新，便于无人值守运行。
+
+### 初始化 Cookie（一次性/按需）
+
+```bash
+./scripts/init_cookies.sh                # 初始化所有站点（OpenI 全部用户 + LinuxDO）
+./scripts/init_cookies.sh --site openi   # 仅初始化 OpenI
+./scripts/init_cookies.sh --site linuxdo # 仅初始化 LinuxDO
+./scripts/init_cookies.sh --user yls     # 仅初始化指定 OpenI 用户
+```
+
+脚本将日志写入 `data/logs/cookie_init_<timestamp>.log`，每行包含时间/站点/用户/状态。
+
+### 刷新 Cookie（周期性）
+
+```bash
+./scripts/refresh_cookies.sh                 # 检测并刷新超过 20 天的 Cookie
+./scripts/refresh_cookies.sh --dry-run       # 仅查看将要刷新哪些
+./scripts/refresh_cookies.sh --force         # 忽略阈值，强制刷新所有目标
+./scripts/refresh_cookies.sh --site openi    # 仅处理 OpenI
+./scripts/refresh_cookies.sh --site linuxdo  # 仅处理 LinuxDO
+./scripts/refresh_cookies.sh --user yls      # 仅处理指定 OpenI 用户
+```
+
+刷新日志写入 `data/logs/cookie_refresh_<timestamp>.log`，统计刷新/跳过/失败数。
+
+### 建议的 crontab
+
+以每天凌晨 05:15 运行刷新为例（修改为你的仓库路径）：
+
+```
+15 5 * * * /bin/bash -lc 'cd /root/yls/code/Auto && ./scripts/refresh_cookies.sh >> /root/yls/code/Auto/data/logs/cron_refresh.log 2>&1'
+```
+
+Tips:
+- 首次部署建议先执行 `./scripts/init_cookies.sh` 生成初始 Cookie
+- 若服务器无物理显示，LinuxDO 由脚本自动使用 `xvfb-run` 包装 CLI
+- OpenI 的 Cookie 已按用户隔离，文件名形如 `openi_<username>_cookies.json`
+- 全局配置中的 `cookie_expire_days` 建议设置为 30（默认值已更新）
 
 ## 架构设计
 
@@ -194,7 +236,7 @@ class NewSiteLogin(LoginAutomation):
     "run_duration": 15,
     "headless": false,
     "use_cookies": true,
-    "cookie_expire_days": 7
+    "cookie_expire_days": 30
   },
   "users": [
     {"site": "openi", "username": "u", "password": "p"},
@@ -224,7 +266,7 @@ class NewSiteLogin(LoginAutomation):
     "run_duration": 15,
     "headless": false,
     "use_cookies": true,
-    "cookie_expire_days": 7
+    "cookie_expire_days": 30
   },
   "users": [
     {"site": "openi", "username": "user1", "password": "pass1"},
