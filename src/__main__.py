@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
-"""Unified CLI for Auto login automation.
+"""Auto 登录自动化的统一命令行入口。
 
-Usage examples:
-  python -m src anyrouter           # Login to anyrouter
-  python -m src linuxdo             # Login to linuxdo
-  python -m src openi               # Login all OpenI users from config
-  python -m src openi --user yls    # Login specific OpenI user
-  python -m src --help              # Show help
+使用示例：
+  python -m src anyrouter           # 登录 anyrouter
+  python -m src linuxdo             # 登录 linuxdo
+  python -m src openi               # 根据配置登录所有 OpenI 用户
+  python -m src openi --user yls    # 登录指定的 OpenI 用户
+  python -m src --help              # 显示帮助
 
-This CLI acts as a thin wrapper around site-specific scripts located under
-`src/sites/<site>/login.py`. It avoids modifying those modules and forwards
-common options like `--headless` and `--no-cookie`.
+该 CLI 作为对位于 `src/sites/<site>/login.py` 的各站点脚本的轻量封装，
+不修改这些模块，并转发通用选项例如 `--headless` 与 `--no-cookie`。
 """
 
 from __future__ import annotations
@@ -50,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="site", metavar="site", required=True)
 
-    # anyrouter
+    # anyrouter 子命令
     sp_any = subparsers.add_parser(
         "anyrouter",
         help="Login to anyrouter via LinuxDO OAuth",
@@ -59,17 +58,17 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common_options(sp_any)
     sp_any.set_defaults(handler=_handle_anyrouter)
 
-    # linuxdo
+    # linuxdo 子命令
     sp_ld = subparsers.add_parser(
         "linuxdo",
         help="Login to linuxdo forum",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     _add_common_options(sp_ld)
-    # Credentials are intentionally not exposed here to keep scope minimal.
+    # 为保持范围最小，这里不直接暴露账号密码参数。
     sp_ld.set_defaults(handler=_handle_linuxdo)
 
-    # openi
+    # openi 子命令
     sp_openi = subparsers.add_parser(
         "openi",
         help="Login to OpenI; supports multi-user or a specific user",
@@ -89,7 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _handle_anyrouter(args: argparse.Namespace) -> int:
     try:
         from src.sites.anyrouter.login import login_to_anyrouter
-    except Exception as exc:  # pragma: no cover - import error path
+    except Exception as exc:  # pragma: no cover - 导入错误路径
         print(f"Failed to import anyrouter login module: {exc}")
         return 2
 
@@ -97,7 +96,7 @@ def _handle_anyrouter(args: argparse.Namespace) -> int:
     ok = False
     try:
         ok = login_to_anyrouter(use_cookie=use_cookie, headless=args.headless)
-    except SystemExit as e:  # allow underlying script to exit intentionally
+    except SystemExit as e:  # 允许底层脚本有意退出
         return int(e.code) if e.code is not None else 1
     except Exception as exc:
         print(f"anyrouter login failed: {exc}")
@@ -108,14 +107,14 @@ def _handle_anyrouter(args: argparse.Namespace) -> int:
 def _handle_linuxdo(args: argparse.Namespace) -> int:
     try:
         from src.sites.linuxdo.login import login_to_linuxdo
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:  # pragma: no cover - 覆盖率忽略
         print(f"Failed to import linuxdo login module: {exc}")
         return 2
 
     use_cookie = not args.no_cookie
     ok = False
     try:
-        # email/password are not exposed here; cookie login is attempted first
+        # 这里不暴露邮箱/密码；优先尝试使用 Cookie 登录
         ok = login_to_linuxdo(use_cookie=use_cookie, headless=args.headless)
     except SystemExit as e:
         return int(e.code) if e.code is not None else 1
@@ -126,11 +125,11 @@ def _handle_linuxdo(args: argparse.Namespace) -> int:
 
 
 def _handle_openi(args: argparse.Namespace) -> int:
-    # If no specific user is provided, invoke the existing multi-user main()
+    # 若未指定具体用户，则调用现有的多用户主流程
     if not args.user:
         try:
             from src.sites.openi.runner import main as openi_main
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:  # pragma: no cover - 覆盖率忽略
             print(f"Failed to import openi login module: {exc}")
             return 2
 
@@ -143,11 +142,11 @@ def _handle_openi(args: argparse.Namespace) -> int:
             print(f"openi login (all users) failed: {exc}")
             return 1
 
-    # Specific user: load config and run just that user via OpeniLogin
+    # 指定用户：加载配置并仅为该用户运行 OpeniLogin
     try:
         from src.sites.openi.config import load_config
         from src.sites.openi.login import OpeniLogin
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:  # pragma: no cover - 覆盖率忽略
         print(f"Failed to import openi utilities: {exc}")
         return 2
 

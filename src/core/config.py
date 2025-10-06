@@ -1,13 +1,11 @@
-"""Unified configuration loader for all sites.
+"""所有站点的统一配置加载器。
 
-This module provides a single class, `UnifiedConfigManager`, that loads
-credentials and per-site configuration from `config/users.json` and offers
-lightweight accessors with environment-variable fallbacks for backward
-compatibility.
+本模块提供单一类 `UnifiedConfigManager`，从 `config/users.json` 加载
+各站点的凭据和配置，并提供带有环境变量回退的轻量访问器以保持向后兼容性。
 
-Supported formats
------------------
-1) Site-based users format (推荐 - 最简洁):
+支持的格式
+----------
+1) 基于站点的 users 格式（推荐 - 最简洁）:
    {
      "config": {
        "task_name": "image",
@@ -23,7 +21,7 @@ Supported formats
      ]
    }
 
-2) Unified credentials format (向后兼容):
+2) 统一凭据格式（向后兼容）:
    {
      "credentials": {
        "openi":    [{"username": "u", "password": "p"}],
@@ -37,24 +35,23 @@ Supported formats
      }
    }
 
-3) Legacy OpenI format (向后兼容):
+3) 旧版 OpenI 格式（向后兼容）:
    {
      "users":  [{"username": "u", "password": "p"}],
      "config": {"task_name": "image", "run_duration": 15, ...}
    }
 
-Environment fallbacks
----------------------
-- linuxdo:   `LINUXDO_EMAIL`, `LINUXDO_PASSWORD`
-- anyrouter: `ANYROUTER_EMAIL`, `ANYROUTER_PASSWORD` then fall back to
-             `LINUXDO_EMAIL`, `LINUXDO_PASSWORD` if not set
-- openi:     `OPENI_USERNAME`, `OPENI_PASSWORD` (optional convenience)
-
-Design notes
+环境变量回退
 ------------
-- Configuration is read at most once per process and cached for subsequent
-  lookups to satisfy the performance constraint.
-- No external dependencies are introduced; I/O uses the standard library.
+- linuxdo:   `LINUXDO_EMAIL`, `LINUXDO_PASSWORD`
+- anyrouter: `ANYROUTER_EMAIL`, `ANYROUTER_PASSWORD`，若未设置则回退到
+             `LINUXDO_EMAIL`, `LINUXDO_PASSWORD`
+- openi:     `OPENI_USERNAME`, `OPENI_PASSWORD`（可选便利项）
+
+设计说明
+--------
+- 每个进程最多读取一次配置并进行缓存，以满足性能约束。
+- 不引入外部依赖；I/O 使用标准库完成。
 """
 
 from __future__ import annotations
@@ -68,37 +65,33 @@ from src.core.paths import get_project_paths
 
 
 class UnifiedConfigManager:
-    """Unified configuration manager for credentials and per-site settings.
+    """用于凭据和各站点设置的统一配置管理器。
 
-    The manager reads `config/users.json` once and serves credentials and
-    configuration for supported sites ("openi", "linuxdo", "anyrouter").
+    该管理器会读取一次 `config/users.json`，并为支持的站点（"openi"、"linuxdo"、"anyrouter"）
+    提供凭据与配置。
 
-    If the file is missing or a specific site has no entries, methods can fall
-    back to environment variables for backward compatibility.
+    如果文件缺失或某站点没有条目，方法会回退到环境变量以保持向后兼容。
 
-    Instances are lightweight; loaded data is cached per-instance. Create one
-    and reuse it where needed.
+    实例是轻量级的；加载的数据在实例级缓存。创建一个实例并在需要处复用即可。
     """
 
     def __init__(self, config_file: str = "users.json") -> None:
         self._config_file: str = config_file
         self._config_path: Path = get_project_paths().config / config_file
-        self._data: Optional[Dict] = None  # loaded on first access
+        self._data: Optional[Dict] = None  # 首次访问时加载
 
-    # ---- public API -----------------------------------------------------
+    # ---- 公共 API -----------------------------------------------------
     def get_credentials(self, site: str, index: int = 0, fallback_env: bool = True) -> Dict:
-        """Return a single credential record for a site.
+        """返回指定站点的一条凭据记录。
 
-        Parameters:
-            site:         Site key, e.g. "openi", "linuxdo", "anyrouter" (case-insensitive).
-            index:        Index within the site's credentials list (default: 0).
-            fallback_env: When True, return environment-based credentials if file-based
-                          credentials are unavailable or out-of-range.
+        参数:
+            site:         站点标识，例如 "openi"、"linuxdo"、"anyrouter"（不区分大小写）。
+            index:        站点凭据列表中的索引（默认: 0）。
+            fallback_env: 为 True 时，当文件凭据不可用或索引越界时，返回基于环境变量的凭据。
 
-        Returns:
-            A credential dict (e.g., {"username": ..., "password": ...} for openi
-            or {"email": ..., "password": ...} for linuxdo/anyrouter). Returns an
-            empty dict when nothing is found and no environment fallback applies.
+        返回:
+            凭据字典（例如 openi 为 {"username": ..., "password": ...}，
+            linuxdo/anyrouter 为 {"email": ..., "password": ...}）。当未找到且无环境回退时返回空字典。
         """
         key = _normalize_site(site)
         creds = self.get_all_users(key)
@@ -110,32 +103,31 @@ class UnifiedConfigManager:
         return {}
 
     def get_all_users(self, site: str) -> List[Dict]:
-        """Return all credential records for a site from file only.
+        """仅从文件返回某站点的全部凭据记录。
 
-        Supports three formats:
-        1. Unified format: credentials[site] = [...]
-        2. Site-based users format: users = [{"site": "openi", ...}, ...]
-        3. Legacy OpenI format: users = [{"username": ..., "password": ...}] (no site field)
+        支持三种格式：
+        1. 统一格式：credentials[site] = [...]
+        2. 按站点划分的 users 格式：users = [{"site": "openi", ...}, ...]
+        3. 旧版 OpenI 格式：users = [{"username": ..., "password": ...}]（无 site 字段）
 
-        Environment variables are NOT considered here; use `get_credentials()`
-        for an env-aware single-record fetch.
+        这里不考虑环境变量；若需带环境回退的单条记录，请使用 `get_credentials()`。
         """
         data = self._load_once()
         key = _normalize_site(site)
         if not data:
             return []
 
-        # Format 1: Unified credentials format
+        # 格式 1：统一凭据格式
         creds = data.get("credentials")
         if isinstance(creds, dict):
             items = creds.get(key)
             if isinstance(items, list):
                 return list(items)
 
-        # Format 2 & 3: users array
+        # 格式 2 与 3：users 数组
         users = data.get("users")
         if isinstance(users, list):
-            # Format 2: Site-based users (with "site" field)
+            # 格式 2：按站点划分的 users（包含 "site" 字段）
             site_filtered = [
                 u for u in users
                 if isinstance(u, dict) and _normalize_site(u.get("site", "")) == key
@@ -143,9 +135,9 @@ class UnifiedConfigManager:
             if site_filtered:
                 return site_filtered
 
-            # Format 3: Legacy OpenI format (no "site" field, all entries are openi)
+            # 格式 3：旧版 OpenI 格式（无 "site" 字段，默认均为 openi）
             if key == "openi":
-                # Check if any user has "site" field; if not, treat all as openi
+                # 检查是否存在包含 "site" 字段的条目；若不存在，则全部视为 openi
                 has_site_field = any(isinstance(u, dict) and "site" in u for u in users)
                 if not has_site_field:
                     return list(users)
@@ -153,35 +145,35 @@ class UnifiedConfigManager:
         return []
 
     def get_site_config(self, site: str) -> Dict:
-        """Return per-site configuration dict.
+        """返回站点级的配置字典。
 
-        In the unified format, this returns `config[site]` if present; in the
-        legacy OpenI format, it returns the top-level `config` when `site == 'openi'`.
+        在统一格式中，若存在则返回 `config[site]`；在旧版 OpenI 格式中，
+        当 `site == 'openi'` 时返回顶层 `config`。
 
-        Missing entries yield an empty dict.
+        缺失时返回空字典。
         """
         data = self._load_once()
         key = _normalize_site(site)
         if not data:
             return {}
 
-        # Unified format: config is a mapping of site -> options
+        # 统一格式：config 是 site -> options 的映射
         cfg = data.get("config")
         if isinstance(cfg, dict):
-            # If the unified structure exists, prefer specific site config
+            # 若存在统一结构，优先返回站点专属配置
             if key in cfg and isinstance(cfg[key], dict):
                 return dict(cfg[key])
-            # Legacy OpenI: top-level config without site-scoping
+            # 旧版 OpenI：顶层 config，无站点作用域
             if key == "openi" and "credentials" not in data and "users" in data:
                 return dict(cfg) if isinstance(cfg, dict) else {}
 
         return {}
 
-    # ---- internals ------------------------------------------------------
+    # ---- 内部实现 ------------------------------------------------------
     def _load_once(self) -> Dict:
-        """Load and cache the JSON config from disk.
+        """从磁盘加载并缓存 JSON 配置。
 
-        Returns an empty dict if the file does not exist or cannot be parsed.
+        若文件不存在或无法解析，则返回空字典。
         """
         if self._data is not None:
             return self._data
@@ -196,24 +188,24 @@ class UnifiedConfigManager:
                 data = json.load(fh)
             self._data = data if isinstance(data, dict) else {}
         except Exception:
-            # Be tolerant: allow env fallbacks to work when JSON is bad
+            # 容错处理：当 JSON 不合法时，允许环境变量回退继续工作
             self._data = {}
         return self._data
 
 
-# ---- helpers -------------------------------------------------------------
+# ---- 辅助函数 -------------------------------------------------------------
 def _normalize_site(site: str) -> str:
-    """Normalize a site identifier to its canonical lowercase form."""
+    """将站点标识规范化为小写形式。"""
     return (site or "").strip().lower()
 
 
 def _env_credentials(site: str) -> Dict:
-    """Return credentials from environment variables for a specific site.
+    """根据站点从环境变量获取凭据。
 
-    Site-specific mapping:
+    各站点对应关系：
     - openi:     OPENI_USERNAME, OPENI_PASSWORD -> {"username", "password"}
     - linuxdo:   LINUXDO_EMAIL,  LINUXDO_PASSWORD -> {"email", "password"}
-    - anyrouter: ANYROUTER_EMAIL, ANYROUTER_PASSWORD, falling back to
+    - anyrouter: ANYROUTER_EMAIL, ANYROUTER_PASSWORD，若未设置则回退到
                  LINUXDO_EMAIL, LINUXDO_PASSWORD -> {"email", "password"}
     """
     key = _normalize_site(site)
@@ -233,8 +225,7 @@ def _env_credentials(site: str) -> Dict:
         p = os.getenv("ANYROUTER_PASSWORD", "").strip()
         if e and p:
             return {"email": e, "password": p}
-        # Backward compatible with current AnyRouter implementation which
-        # authenticates via LinuxDO OAuth.
+        # 向后兼容：当前 AnyRouter 通过 LinuxDO OAuth 认证
         e = os.getenv("LINUXDO_EMAIL", "").strip()
         p = os.getenv("LINUXDO_PASSWORD", "").strip()
         return {"email": e, "password": p} if e and p else {}
@@ -245,4 +236,3 @@ def _env_credentials(site: str) -> Dict:
 __all__ = [
     "UnifiedConfigManager",
 ]
-

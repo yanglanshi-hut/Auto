@@ -1,4 +1,4 @@
-"""Base classes shared by the login automation scripts."""
+"""登录自动化脚本共享的基类。"""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from src.core.paths import get_project_paths
 
 
 class LoginAutomation(abc.ABC):
-    """Common orchestration logic for interactive login flows."""
+    """交互式登录流程的通用编排逻辑。"""
 
     def __init__(
         self,
@@ -47,7 +47,7 @@ class LoginAutomation(abc.ABC):
         verify_url: Optional[str] = None,
         expire_days: Optional[int] = None,
     ) -> bool:
-        """Attempt to authenticate using previously stored cookies."""
+        """尝试使用先前保存的 Cookie 进行认证。"""
         effective_expire_days = self.cookie_expire_days if expire_days is None else expire_days
 
         if not self.cookie_manager.load_cookies(page.context, self.site_name, effective_expire_days):
@@ -74,14 +74,14 @@ class LoginAutomation(abc.ABC):
 
     @abc.abstractmethod
     def verify_login(self, page: Page) -> bool:
-        """Return True when the page reflects an authenticated session."""
+        """当页面反映出已认证的会话时返回 True。"""
 
     @abc.abstractmethod
     def do_login(self, page: Page, **credentials) -> bool:
-        """Perform the interactive login flow and return success."""
+        """执行交互式登录流程并返回是否成功。"""
 
     def after_login(self, page: Page, **credentials) -> None:
-        """Hook for subclasses to run post-login automation steps."""
+        """供子类在登录后执行自动化步骤的钩子。"""
 
     def run(
         self,
@@ -91,7 +91,7 @@ class LoginAutomation(abc.ABC):
         cookie_expire_days: Optional[int] = None,
         **credentials,
     ) -> bool:
-        """Execute the complete login flow."""
+        """执行完整的登录流程。"""
         login_success = False
         self.logged_in_with_cookies = False
 
@@ -131,7 +131,7 @@ class LoginAutomation(abc.ABC):
             self.page = None
 
     def _error_screenshot_path(self) -> str:
-        """Create a filesystem-safe screenshot path for failures."""
+        """为失败情况创建一个文件系统安全的截图路径。"""
         safe_name = self.site_name.replace('/', '_').replace('\\', '_')
         screenshots_dir = get_project_paths().screenshots
         return str((screenshots_dir / f"{safe_name}_error_screenshot.png").resolve())

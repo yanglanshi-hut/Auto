@@ -1,4 +1,4 @@
-"""Browser management helpers for login automation scripts."""
+"""登录自动化脚本的浏览器管理辅助工具。"""
 
 from __future__ import annotations
 
@@ -10,14 +10,14 @@ from src.core.paths import get_project_paths
 
 
 class BrowserManager:
-    """Wrap Playwright browser lifecycle management."""
+    """封装 Playwright 浏览器生命周期管理。"""
 
     def __init__(self) -> None:
         self._playwright_cm = None
         self._playwright = None
 
     def launch(self, headless: bool = False, **launch_kwargs):
-        """Start Playwright and launch a Chromium browser."""
+        """启动 Playwright 并启动一个 Chromium 浏览器。"""
         if self._playwright_cm is not None:
             raise RuntimeError("Browser already launched for this manager")
 
@@ -26,12 +26,12 @@ class BrowserManager:
         return self._playwright.chromium.launch(headless=headless, **launch_kwargs)
 
     def close(self, browser) -> None:
-        """Close the browser and stop Playwright safely."""
+        """安全地关闭浏览器并停止 Playwright。"""
         try:
             if browser is not None:
                 browser.close()
         except Exception as e:
-            # Log but don't raise - cleanup should be best-effort
+            # 记录日志但不抛出异常——清理应尽力而为
             try:
                 from src.core.logger import setup_logger
                 from src.core.paths import get_project_paths
@@ -55,7 +55,7 @@ class BrowserManager:
                 self._playwright = None
 
     def save_error_screenshot(self, page, filename: Optional[str]) -> bool:
-        """Capture a screenshot for troubleshooting failures."""
+        """捕获截图以便排查故障。"""
         if page is None or not filename:
             return False
 

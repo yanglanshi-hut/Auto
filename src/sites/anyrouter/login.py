@@ -1,4 +1,4 @@
-"""AnyRouter Login Automation Script"""
+"""AnyRouter 登录自动化脚本"""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ logger = setup_logger("anyrouter", get_project_paths().logs / "anyrouter.log")
 class AnyrouterLogin(LoginAutomation):
     def __init__(self, *, headless: bool = False) -> None:
         super().__init__('anyrouter', headless=headless)
-        # Ensure debug directory exists
+        # 确保调试目录存在
         self.debug_dir = get_project_paths().screenshots / "anyrouter_debug"
         try:
             self.debug_dir.mkdir(parents=True, exist_ok=True)

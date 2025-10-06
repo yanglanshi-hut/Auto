@@ -1,7 +1,7 @@
-"""Logging utilities for the automation project.
+"""自动化项目的日志工具。
 
-Provides `setup_logger(name, log_file)` to standardize logging
-configuration across modules without duplicating boilerplate.
+提供 `setup_logger(name, log_file)` 用于在各模块间统一日志配置，
+避免重复样板代码。
 """
 
 from __future__ import annotations
@@ -13,11 +13,11 @@ from typing import Union
 
 
 def setup_logger(name: str, log_file: Union[str, Path]) -> logging.Logger:
-    """Create or retrieve a configured logger.
+    """创建或获取已配置的 logger。
 
-    - Attaches a StreamHandler to stdout and a FileHandler to `log_file`.
-    - Idempotent: repeated calls for the same logger won't add duplicate handlers.
-    - Ensures the parent directory for `log_file` exists.
+    - 同时绑定输出到 stdout 的 StreamHandler 与写入 `log_file` 的 FileHandler。
+    - 幂等：对同一 logger 的重复调用不会重复添加处理器。
+    - 确保 `log_file` 的父目录已存在。
     """
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
@@ -28,13 +28,13 @@ def setup_logger(name: str, log_file: Union[str, Path]) -> logging.Logger:
     except Exception:
         pass
 
-    # Build a consistent formatter
+    # 构建一致的日志格式器
     formatter = logging.Formatter(
         fmt='%(asctime)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S',
     )
 
-    # Attach handlers only if not already present
+    # 仅在未添加的情况下绑定处理器
     handler_types = {type(h) for h in logger.handlers}
 
     if logging.StreamHandler not in handler_types:
@@ -48,7 +48,7 @@ def setup_logger(name: str, log_file: Union[str, Path]) -> logging.Logger:
             fh.setFormatter(formatter)
             logger.addHandler(fh)
         except Exception:
-            # If the file cannot be opened, keep stdout handler only.
+            # 若文件无法打开，仅保留 stdout 处理器。
             pass
 
     return logger

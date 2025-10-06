@@ -1,4 +1,4 @@
-"""Cookie management utilities for login automation scripts."""
+"""登录自动化脚本的 Cookie 管理工具。"""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ from src.core.paths import get_project_paths
 
 
 class CookieManager:
-    """Handle persistence and restoration of browser cookies."""
+    """处理浏览器 Cookie 的持久化与恢复。"""
 
     def __init__(self, base_dir: Optional[Path] = None) -> None:
-        """Initialize the cookie manager.
+        """初始化 Cookie 管理器。
 
-        If `base_dir` is not provided, defaults to `ProjectPaths.cookies`.
+        若未提供 `base_dir`，则默认使用 `ProjectPaths.cookies`。
         """
         if base_dir is None:
             self.base_dir = get_project_paths().cookies
@@ -38,14 +38,14 @@ class CookieManager:
         return None
 
     def get_cookie_path(self, site_name: str) -> Path:
-        """Return preferred path, falling back to legacy if it exists."""
+        """返回首选路径，若存在旧版路径则回退使用。"""
         existing = self._existing_path(site_name)
         if existing:
             return existing
         return self._cookie_path(site_name)
 
     def save_cookies(self, context, site_name: str) -> Path:
-        """Persist cookies from the given Playwright context."""
+        """持久化保存来自指定 Playwright 上下文的 cookies。"""
         cookies = context.cookies()
         payload = {
             "cookies": cookies,
@@ -63,7 +63,7 @@ class CookieManager:
         with target_path.open("w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
 
-        # Keep legacy file in sync if both paths are present
+        # 若两个路径同时存在，则保持旧版文件同步
         if target_path is cookie_path and legacy_path.exists():
             with legacy_path.open("w", encoding="utf-8") as handle:
                 json.dump(payload, handle, ensure_ascii=False, indent=2)
@@ -71,7 +71,7 @@ class CookieManager:
         return target_path
 
     def load_cookies(self, context, site_name: str, expire_days: int = 7) -> bool:
-        """Restore cookies into the Playwright context if still valid."""
+        """若仍然有效，则将 cookies 恢复到 Playwright 上下文。"""
         cookie_path = self._existing_path(site_name)
         if not cookie_path:
             return False

@@ -1,4 +1,4 @@
-"""Configuration helpers for OpenI automation."""
+"""OpenI 自动化的配置辅助工具。"""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from src.core.paths import get_project_paths
 
 
 def load_config(config_file: str = "users.json") -> Dict:
-    """Load the OpenI users/config file from `config/`.
+    """从 `config/` 目录加载 OpenI 的用户/配置文件。
 
-    Returns a dict with keys: `users` and optional `config`.
+    返回包含键 `users` 与可选键 `config` 的字典。
     """
     config_path = get_project_paths().config / config_file
     if not config_path.exists():

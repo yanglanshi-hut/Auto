@@ -1,8 +1,7 @@
-"""Cloud task interactions for the OpenI site.
+"""OpenI 站点的云脑任务交互。
 
-This module provides `CloudTaskManager` which encapsulates logic for
-viewing dashboard info, navigating to the cloud task page, and starting
-or stopping a task.
+本模块提供 `CloudTaskManager`，封装查看仪表盘信息、导航至云脑任务页面，
+以及启动或停止任务的逻辑。
 """
 
 from __future__ import annotations
@@ -20,13 +19,13 @@ logger = setup_logger("openi.cloud_task", get_project_paths().logs / "openi_auto
 
 
 class CloudTaskManager:
-    """High-level operations for OpenI cloud tasks."""
+    """OpenI 云脑任务的高层操作封装。"""
 
     def __init__(self, task_name: str, run_duration: int = 5) -> None:
         self.task_name = task_name
         self.run_duration = run_duration
 
-    # ----- Dashboard helpers -----
+    # ----- 仪表盘辅助 -----
     def show_dashboard_info(self, page: Page) -> None:
         logger.info("\n用户仪表盘信息")
         try:
@@ -43,7 +42,7 @@ class CloudTaskManager:
         except Exception:
             pass
 
-    # ----- Navigation and popups -----
+    # ----- 导航与弹窗 -----
     def navigate_to_cloud_task(self, page: Page) -> None:
         logger.info("\n导航到云脑任务页面...")
         page.get_by_role('link', name='云脑任务').click()
@@ -63,7 +62,7 @@ class CloudTaskManager:
 
         logger.info("  - 任务列表已加载")
 
-    # ----- Task primitives -----
+    # ----- 任务基础操作 -----
     def wait_for_task_status(self, page: Page, target_status: str, timeout: int = 30) -> bool:
         logger.info(f"等待任务状态变为 {target_status}...")
         for _ in range(timeout):
@@ -103,7 +102,7 @@ class CloudTaskManager:
             logger.error(f"停止任务失败: {exc}")
             return False
 
-    # ----- High-level flow -----
+    # ----- 高层流程 -----
     def handle_cloud_task(self, page: Page) -> None:
         logger.info(f"\n搜索任务 '{self.task_name}'...")
         search_input = page.get_by_role('textbox', name='搜索任务名称')

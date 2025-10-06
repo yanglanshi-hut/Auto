@@ -1,12 +1,12 @@
-"""Centralized project path management.
+"""集中管理项目路径。
 
-This module exposes a single `ProjectPaths` dataclass and a helper
-`get_project_paths()` function that returns a singleton instance.
+本模块提供一个 `ProjectPaths` 数据类和辅助函数 `get_project_paths()`，
+用于返回单例实例。
 
-Design goals:
-- Detect the project root once at import time for performance.
-- Provide stable, backwards-compatible directories for data/config.
-- Keep path joins out of business logic for simplicity.
+设计目标：
+- 在导入时仅检测一次项目根目录以提高性能。
+- 为数据/配置提供稳定、向后兼容的目录。
+- 将路径拼接从业务逻辑中剥离以保持简单。
 """
 
 from __future__ import annotations
@@ -16,18 +16,17 @@ from pathlib import Path
 
 
 def _detect_project_root(start: Path) -> Path:
-    """Detect the project root directory.
+    """检测项目根目录。
 
-    The project root is defined as the directory that contains both
-    `src/` and `config/` directories. If not found, fall back to the
-    third parent of this file (matching the expected layout) or the
-    filesystem root of the provided path.
+    项目根目录被定义为同时包含 `src/` 和 `config/` 目录的路径。
+    若未找到，则回退到该文件的第三级父目录（符合预期布局），
+    或者回退到所提供路径的文件系统根。
     """
     for parent in [start, *start.parents]:
         if (parent / "src").exists() and (parent / "config").exists():
             return parent
-    # Expected structure: <root>/src/core/paths.py -> parents[2] == <root>/src/core
-    # parents[3] should be <root>/
+    # 期望的结构：<root>/src/core/paths.py -> parents[2] == <root>/src/core
+    # parents[3] 应为 <root>/
     try:
         return start.resolve().parents[3]
     except Exception:
@@ -36,16 +35,16 @@ def _detect_project_root(start: Path) -> Path:
 
 @dataclass(frozen=True)
 class ProjectPaths:
-    """Dataclass grouping commonly used project directories.
+    """聚合项目中常用目录的数据类。
 
-    Attributes:
-        root: Project root directory.
-        src:  Source code directory (root / 'src').
-        data: Data directory (root / 'data').
-        config: Config directory (root / 'config').
-        cookies: Cookie storage directory (data / 'cookies').
-        logs: Log output directory (data / 'logs').
-        screenshots: Screenshot output directory (data / 'screenshots').
+    属性:
+        root: 项目根目录。
+        src:  源码目录（root / 'src'）。
+        data: 数据目录（root / 'data'）。
+        config: 配置目录（root / 'config'）。
+        cookies: Cookie 存储目录（data / 'cookies'）。
+        logs: 日志输出目录（data / 'logs'）。
+        screenshots: 截图输出目录（data / 'screenshots'）。
     """
 
     root: Path
@@ -60,7 +59,7 @@ class ProjectPaths:
 _HERE = Path(__file__).resolve()
 _ROOT = _detect_project_root(_HERE)
 
-# Construct the paths once at import time to satisfy the performance constraint.
+# 在导入时构建路径以满足性能约束。
 _PATHS_SINGLETON = ProjectPaths(
     root=_ROOT,
     src=_ROOT / "src",
@@ -73,6 +72,6 @@ _PATHS_SINGLETON = ProjectPaths(
 
 
 def get_project_paths() -> ProjectPaths:
-    """Return the lazily created, process-wide `ProjectPaths` instance."""
+    """返回进程范围内惰性创建的 `ProjectPaths` 实例。"""
     return _PATHS_SINGLETON
 

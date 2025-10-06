@@ -1,5 +1,5 @@
 """
-Linux.do Forum Login Automation Script
+Linux.do 论坛登录自动化脚本
 使用 Playwright 自动登录 Linux.do 论坛，支持 Cookie 登录和快速登录
 """
 

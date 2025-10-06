@@ -1,4 +1,4 @@
-"""Run OpenI automation for one or more users (CLI entry)."""
+"""为一个或多个用户运行 OpenI 自动化（CLI 入口）。"""
 
 from __future__ import annotations
 

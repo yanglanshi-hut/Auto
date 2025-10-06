@@ -1,5 +1,5 @@
 """
-OpenI Platform Login Automation Script
+OpenI 平台登录自动化脚本
 使用 Playwright 自动登录启智AI开源社区平台
 """
 
@@ -51,7 +51,7 @@ class OpeniLogin(LoginAutomation):
         self._popup = PopupHandler()
         self._cloud = CloudTaskManager(task_name=self.task_name, run_duration=self.run_duration)
 
-    # Cookie login uses base implementation for simplicity
+    # 为简化实现，Cookie 登录沿用基类实现
 
     def verify_login(self, page: Page) -> bool:
         try:

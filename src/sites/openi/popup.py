@@ -1,7 +1,6 @@
-"""Popup handling utilities for the OpenI site.
+"""OpenI 站点的弹窗处理工具。
 
-Encapsulates the logic to dismiss various modal dialogs that may appear
-on dashboard and cloud task pages.
+封装在仪表盘和云脑任务页面上可能出现的各类模态对话框的关闭逻辑。
 """
 
 from __future__ import annotations
@@ -16,15 +15,14 @@ logger = setup_logger("openi.popup", get_project_paths().logs / "openi_automatio
 
 
 class PopupHandler:
-    """Dismiss common popups shown on OpenI pages.
+    """关闭 OpenI 页面上的常见弹窗。
 
-    Methods are defensive and will quietly do nothing if the expected
-    elements are not present.
+    方法以防御性方式实现：当不存在预期元素时将静默忽略。
     """
 
     def close_popup(self, page: Page) -> None:
-        """Attempt to close any visible popups on the current page."""
-        # Try the "do not remind again" checkbox if present
+        """尝试关闭当前页面上可见的弹窗。"""
+        # 若存在“不要再次提醒”复选框则尝试勾选
         try:
             no_reminder_checkbox = page.locator('input[name="notRemindAgain"]').first
             if no_reminder_checkbox.is_visible():
@@ -33,7 +31,7 @@ class PopupHandler:
         except Exception:
             pass
 
-        # Try to click any buttons or elements labeled "关闭"
+        # 尝试点击标注为“关闭”的按钮或元素
         try:
             close_buttons = page.get_by_text('关闭').all()
             if close_buttons:
