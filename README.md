@@ -68,20 +68,18 @@ cp config/users.json.example config/users.json
 2. 编辑 `config/users.json`：
 ```json
 {
-  "credentials": {
-    "openi": [
-      {"username": "user1", "password": "pass1"}
-    ],
-    "linuxdo": [
-      {"email": "email@example.com", "password": "pass"}
-    ],
-    "anyrouter": [
-      {"email": "email@example.com", "password": "pass"}
-    ]
-  },
   "config": {
-    "openi": {"task_name": "image", "run_duration": 15}
-  }
+    "task_name": "image",
+    "run_duration": 15,
+    "headless": false,
+    "use_cookies": true,
+    "cookie_expire_days": 7
+  },
+  "users": [
+    {"site": "openi", "username": "用户名1", "password": "密码1"},
+    {"site": "linuxdo", "email": "邮箱@example.com", "password": "密码"},
+    {"site": "anyrouter", "email": "邮箱@example.com", "password": "密码"}
+  ]
 }
 ```
 
@@ -164,20 +162,20 @@ class NewSiteLogin(LoginAutomation):
 ### LinuxDO
 - **登录方式**: 账号密码表单登录
 - **凭据配置**:
-  1. 优先：`config/users.json` - `credentials.linuxdo`
-  2. Fallback：环境变量 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
+  1. 优先：`config/users.json` - `users` 数组（`site: "linuxdo"`）
+  2. 回退：环境变量 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
 - **特性**: Cookie 快速登录、自动处理登录表单
 
 ### AnyRouter
 - **登录方式**: LinuxDO OAuth 授权
 - **凭据配置**:
-  1. 优先：`config/users.json` - `credentials.anyrouter`
-  2. Fallback：环境变量 `ANYROUTER_EMAIL` / `ANYROUTER_PASSWORD` 或 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
+  1. 优先：`config/users.json` - `users` 数组（`site: "anyrouter"`）
+  2. 回退：环境变量 `ANYROUTER_EMAIL` / `ANYROUTER_PASSWORD` 或 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
 - **特性**: 自动处理授权弹窗、记住授权、导航到 API 令牌页
 
 ### OpenI
 - **登录方式**: 账号密码登录
-- **凭据**: `config/users.json` - `credentials.openi` 或 `users`（旧格式）
+- **凭据配置**: `config/users.json` - `users` 数组（`site: "openi"`）
 - **特性**:
   - 多用户批量处理
   - 云脑任务自动化（启动/停止任务赚取积分）
@@ -186,60 +184,60 @@ class NewSiteLogin(LoginAutomation):
 
 ## 配置说明
 
-### 新旧格式对比
+### 配置格式
 
-新版统一格式（推荐）：
+**当前格式**（推荐 - 最简洁）：
 ```json
 {
-  "credentials": {
-    "openi":    [{"username": "u", "password": "p"}],
-    "linuxdo":  [{"email": "e", "password": "p"}],
-    "anyrouter": [{"email": "e", "password": "p"}]
-  },
   "config": {
-    "openi": {"task_name": "image", "run_duration": 15},
-    "linuxdo": {"cookie_expire_days": 7},
-    "anyrouter": {"cookie_expire_days": 7}
-  }
+    "task_name": "image",
+    "run_duration": 15,
+    "headless": false,
+    "use_cookies": true,
+    "cookie_expire_days": 7
+  },
+  "users": [
+    {"site": "openi", "username": "u", "password": "p"},
+    {"site": "linuxdo", "email": "e", "password": "p"},
+    {"site": "anyrouter", "email": "e", "password": "p"}
+  ]
 }
 ```
 
-旧版 OpenI 专用格式（兼容保留，用于旧逻辑）：
-```json
-{
-  "users":  [{"username": "u", "password": "p"}],
-  "config": {"task_name": "image", "run_duration": 15}
-}
-```
+**说明**：
+- `config`: 全局配置项（所有站点共享）
+- `users`: 用户凭据列表，通过 `site` 字段区分站点
+- 支持同站点多账号：添加多个相同 `site` 的条目即可
 
-说明：当两种结构同时存在时，会优先读取统一格式中的 `credentials.openi`；仅在统一格式缺失时回退到旧版 `users`。
+### 环境变量回退说明
 
-### 环境变量 fallback 说明
-
-- LinuxDO: 优先读取 `config/users.json`，缺失时回退 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
-- AnyRouter: 优先读取 `config/users.json`，缺失时回退 `ANYROUTER_EMAIL` / `ANYROUTER_PASSWORD`，再回退 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
-- 优先级总原则：配置文件 > 环境变量（向后兼容）
+- **LinuxDO**: 优先读取 `config/users.json`，缺失时回退到 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
+- **AnyRouter**: 优先读取 `config/users.json`，缺失时回退到 `ANYROUTER_EMAIL` / `ANYROUTER_PASSWORD`，再回退到 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
+- **优先级总原则**: 配置文件 > 环境变量（向后兼容）
 
 ### 多用户配置示例
 
 ```json
 {
-  "credentials": {
-    "openi": [
-      {"username": "user1", "password": "pass1"},
-      {"username": "user2", "password": "pass2"}
-    ],
-    "linuxdo": [
-      {"email": "user1@example.com", "password": "pass"},
-      {"email": "user2@example.com", "password": "pass"}
-    ]
-  },
   "config": {
-    "openi": {"task_name": "image", "run_duration": 15},
-    "linuxdo": {"cookie_expire_days": 7}
-  }
+    "task_name": "image",
+    "run_duration": 15,
+    "headless": false,
+    "use_cookies": true,
+    "cookie_expire_days": 7
+  },
+  "users": [
+    {"site": "openi", "username": "user1", "password": "pass1"},
+    {"site": "openi", "username": "user2", "password": "pass2"},
+    {"site": "openi", "username": "user3", "password": "pass3"},
+    {"site": "linuxdo", "email": "user@example.com", "password": "pass"}
+  ]
 }
 ```
+
+**使用**：
+- `python -m src openi` - 批量运行所有 OpenI 用户（user1, user2, user3）
+- `python -m src openi --user user1` - 只运行指定用户
 
 ## 许可证
 
