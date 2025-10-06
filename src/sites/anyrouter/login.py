@@ -56,43 +56,71 @@ class AnyrouterLogin(LoginAutomation):
                 return False
 
     def login_with_linuxdo_oauth(self, page: Page) -> bool:
-        """LinuxDO OAuth 主流程：导航、预加载、授权页、登录/同意、验证"""
-        logger.info("使用 LinuxDO OAuth 登录...")
+        """LinuxDO OAuth 主流程：导航、预加载、授权页、登录/同意、验证
+
+        注意：此方法不负责清除 LinuxDO Cookie，由 do_login() 统一处理
+        """
+        logger.info("=" * 60)
+        logger.info("开始 AnyRouter OAuth 登录流程")
+        logger.info("=" * 60)
+
         try:
+            logger.info("[1/6] 导航到登录页...")
             if not self._navigate_to_login_page(page):
-                logger.warning("导航到登录页失败")
+                logger.error("[1/6] 失败：导航到登录页失败")
                 return False
+            logger.info("[1/6] 成功：已到达登录页")
+
             self._close_announcement_modal(page)
 
+            logger.info("[2/6] 打开 OAuth 授权窗口...")
             auth_page = self._open_oauth_window(page)
             if auth_page is None:
-                logger.warning("未能打开 OAuth 授权窗口")
+                logger.error("[2/6] 失败：未能打开 OAuth 授权窗口")
                 return False
-            if not self._validate_auth_page(auth_page):
-                logger.warning("授权页验证失败")
-                return False
+            logger.info("[2/6] 成功：OAuth 窗口已打开")
 
-            # 填写 LinuxDO 凭据（如果需要）
-            if not self._fill_linuxdo_credentials_if_needed(auth_page):
-                logger.warning("填写 LinuxDO 凭据失败")
+            if not self._validate_auth_page(auth_page):
+                logger.error("[3/6] 失败：授权页验证失败")
                 return False
+            logger.info("[3/6] 成功：授权页验证通过")
+
+            logger.info("[4/6] 处理 LinuxDO 登录...")
+            if not self._fill_linuxdo_credentials_if_needed(auth_page):
+                logger.error("[4/6] 失败：填写凭据失败")
+                return False
+            logger.info("[4/6] 成功：LinuxDO 凭据已提交")
+
             self._save_linuxdo_cookie(auth_page)
 
+            logger.info("[5/6] 检查是否提前完成授权...")
             if self._early_verify_anyrouter(page):
-                logger.info("提前验证成功，登录完成")
-                # 清除 linuxdo Cookie，避免保存时污染 anyrouter Cookie 文件
-                self._clear_linuxdo_cookies(page.context)
+                logger.info("[5/6] 成功：提前验证通过，无需显式授权")
+                logger.info("=" * 60)
+                logger.info("OAuth 登录完成")
+                logger.info("=" * 60)
                 return True
+            logger.info("[5/6] 继续：需要处理授权同意")
 
+            logger.info("[6/6] 处理授权同意...")
             self._handle_oauth_consent(auth_page)
+
+            logger.info("[6/6] 最终验证登录状态...")
             result = self._finalize_and_verify(page)
+
             if result:
-                logger.info("登录验证成功")
+                logger.info("=" * 60)
+                logger.info("OAuth 登录成功")
+                logger.info("=" * 60)
             else:
-                logger.warning("最终验证失败")
+                logger.error("=" * 60)
+                logger.error("OAuth 登录失败")
+                logger.error("=" * 60)
             return result
         except Exception as exc:
-            logger.error(f"登录过程出错: {exc}")
+            logger.error("=" * 60)
+            logger.error(f"OAuth 登录异常: {exc}")
+            logger.error("=" * 60)
             self.browser_manager.save_error_screenshot(page, 'anyrouter_oauth_exception.png')
             return False
 
@@ -105,8 +133,12 @@ class AnyrouterLogin(LoginAutomation):
         except Exception:
             return False
 
-    def _clear_linuxdo_cookies(self, context) -> None:
-        """清除 context 中所有 linuxdo 域的 Cookie，避免域混杂"""
+    def _clear_linuxdo_cookies(self, context) -> int:
+        """清除 context 中所有 linuxdo 域的 Cookie，避免域混杂
+
+        返回:
+            清除的 Cookie 数量
+        """
         try:
             cookies = context.cookies()
             linuxdo_cookies = [c for c in cookies if 'linux.do' in c.get('domain', '')]
@@ -114,18 +146,40 @@ class AnyrouterLogin(LoginAutomation):
                 for cookie in linuxdo_cookies:
                     context.clear_cookies(name=cookie['name'], domain=cookie['domain'])
                 logger.info(f"已清除 {len(linuxdo_cookies)} 个 LinuxDO Cookie")
+                return len(linuxdo_cookies)
+            return 0
         except Exception as exc:
             logger.warning(f"清除 LinuxDO Cookie 失败: {exc}")
+            return 0
+
+    def _verify_context_clean(self, context) -> bool:
+        """验证 context 中是否还有 LinuxDO Cookie
+
+        返回:
+            True 表示干净（没有 LinuxDO Cookie），False 表示仍有残留
+        """
+        try:
+            cookies = context.cookies()
+            linuxdo_cookies = [c for c in cookies if 'linux.do' in c.get('domain', '')]
+            if linuxdo_cookies:
+                logger.warning(f"检测到 {len(linuxdo_cookies)} 个残留的 LinuxDO Cookie")
+                return False
+            return True
+        except Exception:
+            return True  # 检测失败时假定干净，避免阻塞流程
 
     def _finalize_and_verify(self, page: Page) -> bool:
+        """最终验证登录状态
+
+        注意：不再在此处清除 LinuxDO Cookie，由 do_login() 统一处理
+        """
         try:
             page.bring_to_front()
-            # 等待 OAuth 回调完成（不要立即清除 Cookie）
+            # 等待 OAuth 回调完成
             page.wait_for_timeout(3000)
 
             # 检查是否已经跳转到 /console
             if '/console' in page.url:
-                self._clear_linuxdo_cookies(page.context)
                 logger.info("OAuth 回调成功，已自动跳转")
                 return True
 
@@ -134,9 +188,6 @@ class AnyrouterLogin(LoginAutomation):
                 page.reload()
                 page.wait_for_load_state('domcontentloaded')
                 page.wait_for_timeout(2000)
-
-            # 清除 linuxdo Cookie
-            self._clear_linuxdo_cookies(page.context)
 
             # 多次尝试验证
             for i in range(5):
@@ -316,7 +367,21 @@ class AnyrouterLogin(LoginAutomation):
             return False
 
     def do_login(self, page: Page, **_credentials) -> bool:
-        return self.login_with_linuxdo_oauth(page)
+        """执行登录流程，确保返回前清除 LinuxDO Cookie"""
+        try:
+            success = self.login_with_linuxdo_oauth(page)
+            return success
+        finally:
+            # 无论成功失败，都确保清除 LinuxDO Cookie
+            logger.info("清理 Context 中的 LinuxDO Cookie...")
+            cleared_count = self._clear_linuxdo_cookies(page.context)
+            if cleared_count > 0:
+                logger.info(f"已清除 {cleared_count} 个 LinuxDO Cookie")
+            else:
+                logger.info("Context 中没有 LinuxDO Cookie，无需清除")
+
+            if not self._verify_context_clean(page.context):
+                logger.error("⚠️ 清除后仍检测到 LinuxDO Cookie 残留，可能影响 Cookie 保存")
 
     def after_login(self, page: Page, **_credentials) -> None:
         try:
