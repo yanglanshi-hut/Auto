@@ -140,10 +140,13 @@ class CloudTaskManager:
                 return
 
             page.wait_for_timeout(5000)
-            self.wait_for_task_status(page, 'RUNNING', timeout=60)
+            running_ok = self.wait_for_task_status(page, 'RUNNING', timeout=60)
 
-            logger.info(f"\n任务运行中，等待{self.run_duration}秒...")
-            time.sleep(self.run_duration)
+            if running_ok:
+                logger.info(f"\n任务运行中，等待{self.run_duration}秒...")
+                time.sleep(self.run_duration)
+            else:
+                logger.warning("\n任务启动超时，尝试停止任务...")
 
             self.stop_task(page, wait_for_stopped=False)
             page.wait_for_timeout(2000)
