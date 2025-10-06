@@ -83,6 +83,24 @@ class LoginAutomation(abc.ABC):
     def after_login(self, page: Page, **credentials) -> None:
         """供子类在登录后执行自动化步骤的钩子。"""
 
+    def _log_cookie_warning(self, site_name: str) -> None:
+        """记录 Cookie 警告（降低嵌套）"""
+        try:
+            from src.core.logger import setup_logger
+            from src.core.paths import get_project_paths
+            logger = setup_logger("base", get_project_paths().logs / "base.log")
+            logger.warning(f"{site_name}: Cookie 保存前检测到非目标域的 Cookie")
+        except Exception:
+            pass
+
+    def _verify_and_save_cookies(self, context, site_name: str) -> None:
+        """验证并保存 Cookie（降低嵌套）"""
+        # 保存前验证 Cookie 纯净性（如果子类提供了验证方法）
+        if hasattr(self, '_verify_context_clean'):
+            if not self._verify_context_clean(context):
+                self._log_cookie_warning(site_name)
+        self.cookie_manager.save_cookies(context, site_name)
+
     def run(
         self,
         *,
@@ -109,18 +127,7 @@ class LoginAutomation(abc.ABC):
                 login_success = self.do_login(self.page, **credentials)
                 self.logged_in_with_cookies = False
                 if login_success and use_cookie:
-                    # 保存前验证 Cookie 纯净性（如果子类提供了验证方法）
-                    if hasattr(self, '_verify_context_clean'):
-                        if not self._verify_context_clean(self.context):
-                            # 尝试获取日志记录器
-                            try:
-                                from src.core.logger import setup_logger
-                                from src.core.paths import get_project_paths
-                                logger = setup_logger("base", get_project_paths().logs / "base.log")
-                                logger.warning(f"{self.site_name}: Cookie 保存前检测到非目标域的 Cookie")
-                            except Exception:
-                                pass
-                    self.cookie_manager.save_cookies(self.context, self.site_name)
+                    self._verify_and_save_cookies(self.context, self.site_name)
 
             if login_success:
                 self.after_login(self.page, **credentials)
