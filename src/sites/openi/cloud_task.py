@@ -22,7 +22,7 @@ logger = setup_logger("openi.cloud_task", get_project_paths().logs / "openi_auto
 class CloudTaskManager:
     """High-level operations for OpenI cloud tasks."""
 
-    def __init__(self, task_name: str, run_duration: int = 15) -> None:
+    def __init__(self, task_name: str, run_duration: int = 5) -> None:
         self.task_name = task_name
         self.run_duration = run_duration
 

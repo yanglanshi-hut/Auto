@@ -7,7 +7,23 @@ compatibility.
 
 Supported formats
 -----------------
-1) New unified format (recommended):
+1) Site-based users format (推荐 - 最简洁):
+   {
+     "config": {
+       "task_name": "image",
+       "run_duration": 15,
+       "headless": false,
+       "use_cookies": true,
+       "cookie_expire_days": 7
+     },
+     "users": [
+       {"site": "openi", "username": "u", "password": "p"},
+       {"site": "linuxdo", "email": "e", "password": "p"},
+       {"site": "anyrouter", "email": "e", "password": "p"}
+     ]
+   }
+
+2) Unified credentials format (向后兼容):
    {
      "credentials": {
        "openi":    [{"username": "u", "password": "p"}],
@@ -21,7 +37,7 @@ Supported formats
      }
    }
 
-2) Legacy OpenI format (backward compatible):
+3) Legacy OpenI format (向后兼容):
    {
      "users":  [{"username": "u", "password": "p"}],
      "config": {"task_name": "image", "run_duration": 15, ...}
@@ -96,8 +112,10 @@ class UnifiedConfigManager:
     def get_all_users(self, site: str) -> List[Dict]:
         """Return all credential records for a site from file only.
 
-        For legacy OpenI configs, the `users` array is returned when `site == "openi"`.
-        For the unified format, `credentials[site]` is returned if present.
+        Supports three formats:
+        1. Unified format: credentials[site] = [...]
+        2. Site-based users format: users = [{"site": "openi", ...}, ...]
+        3. Legacy OpenI format: users = [{"username": ..., "password": ...}] (no site field)
 
         Environment variables are NOT considered here; use `get_credentials()`
         for an env-aware single-record fetch.
@@ -107,16 +125,30 @@ class UnifiedConfigManager:
         if not data:
             return []
 
-        # Unified format
+        # Format 1: Unified credentials format
         creds = data.get("credentials")
         if isinstance(creds, dict):
             items = creds.get(key)
-            return list(items) if isinstance(items, list) else []
+            if isinstance(items, list):
+                return list(items)
 
-        # Legacy OpenI format
-        if key == "openi":
-            users = data.get("users")
-            return list(users) if isinstance(users, list) else []
+        # Format 2 & 3: users array
+        users = data.get("users")
+        if isinstance(users, list):
+            # Format 2: Site-based users (with "site" field)
+            site_filtered = [
+                u for u in users
+                if isinstance(u, dict) and _normalize_site(u.get("site", "")) == key
+            ]
+            if site_filtered:
+                return site_filtered
+
+            # Format 3: Legacy OpenI format (no "site" field, all entries are openi)
+            if key == "openi":
+                # Check if any user has "site" field; if not, treat all as openi
+                has_site_field = any(isinstance(u, dict) and "site" in u for u in users)
+                if not has_site_field:
+                    return list(users)
 
         return []
 
