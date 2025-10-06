@@ -60,24 +60,37 @@ class AnyrouterLogin(LoginAutomation):
         logger.info("使用 LinuxDO OAuth 登录...")
         try:
             if not self._navigate_to_login_page(page):
+                logger.warning("导航到登录页失败")
                 return False
             self._close_announcement_modal(page)
-            pre_logged = self._preload_linuxdo_cookie(page)
 
             auth_page = self._open_oauth_window(page)
-            if auth_page is None or not self._validate_auth_page(auth_page):
+            if auth_page is None:
+                logger.warning("未能打开 OAuth 授权窗口")
+                return False
+            if not self._validate_auth_page(auth_page):
+                logger.warning("授权页验证失败")
                 return False
 
-            if not pre_logged:
-                if not self._fill_linuxdo_credentials_if_needed(auth_page):
-                    return False
-                self._save_linuxdo_cookie(auth_page)
+            # 填写 LinuxDO 凭据（如果需要）
+            if not self._fill_linuxdo_credentials_if_needed(auth_page):
+                logger.warning("填写 LinuxDO 凭据失败")
+                return False
+            self._save_linuxdo_cookie(auth_page)
 
             if self._early_verify_anyrouter(page):
+                logger.info("提前验证成功，登录完成")
+                # 清除 linuxdo Cookie，避免保存时污染 anyrouter Cookie 文件
+                self._clear_linuxdo_cookies(page.context)
                 return True
 
             self._handle_oauth_consent(auth_page)
-            return self._finalize_and_verify(page)
+            result = self._finalize_and_verify(page)
+            if result:
+                logger.info("登录验证成功")
+            else:
+                logger.warning("最终验证失败")
+            return result
         except Exception as exc:
             logger.error(f"登录过程出错: {exc}")
             self.browser_manager.save_error_screenshot(page, 'anyrouter_oauth_exception.png')
@@ -92,16 +105,51 @@ class AnyrouterLogin(LoginAutomation):
         except Exception:
             return False
 
+    def _clear_linuxdo_cookies(self, context) -> None:
+        """清除 context 中所有 linuxdo 域的 Cookie，避免域混杂"""
+        try:
+            cookies = context.cookies()
+            linuxdo_cookies = [c for c in cookies if 'linux.do' in c.get('domain', '')]
+            if linuxdo_cookies:
+                for cookie in linuxdo_cookies:
+                    context.clear_cookies(name=cookie['name'], domain=cookie['domain'])
+                logger.info(f"已清除 {len(linuxdo_cookies)} 个 LinuxDO Cookie")
+        except Exception as exc:
+            logger.warning(f"清除 LinuxDO Cookie 失败: {exc}")
+
     def _finalize_and_verify(self, page: Page) -> bool:
         try:
             page.bring_to_front()
-            page.wait_for_timeout(800)
-            page.reload()
-            page.wait_for_load_state('domcontentloaded')
-            page.wait_for_timeout(1200)
-        except Exception:
-            pass
-        return self.verify_login(page)
+            # 等待 OAuth 回调完成（不要立即清除 Cookie）
+            page.wait_for_timeout(3000)
+
+            # 检查是否已经跳转到 /console
+            if '/console' in page.url:
+                self._clear_linuxdo_cookies(page.context)
+                logger.info("OAuth 回调成功，已自动跳转")
+                return True
+
+            # 如果还在 /login，尝试刷新
+            if '/login' in page.url:
+                page.reload()
+                page.wait_for_load_state('domcontentloaded')
+                page.wait_for_timeout(2000)
+
+            # 清除 linuxdo Cookie
+            self._clear_linuxdo_cookies(page.context)
+
+            # 多次尝试验证
+            for i in range(5):
+                if self.verify_login(page):
+                    return True
+                logger.info(f"第 {i+1} 次验证失败，当前 URL: {page.url}")
+                page.wait_for_timeout(1500)
+
+            logger.warning(f"验证失败，当前 URL: {page.url}")
+            return False
+        except Exception as exc:
+            logger.error(f"最终验证异常: {exc}")
+            return False
 
     def _navigate_to_login_page(self, page: Page) -> bool:
         try:
@@ -245,7 +293,16 @@ class AnyrouterLogin(LoginAutomation):
             ):
                 try:
                     auth_page.locator(selector).first.click(timeout=5000)
-                    auth_page.wait_for_timeout(1500)
+                    # 等待 OAuth 回调完成（popup 应该跳转到 anyrouter.top）
+                    auth_page.wait_for_timeout(3000)
+
+                    # 检查是否已经跳转到 anyrouter
+                    try:
+                        if 'anyrouter.top' in auth_page.url:
+                            logger.info(f"OAuth popup 已跳转到: {auth_page.url}")
+                    except Exception:
+                        pass
+
                     break
                 except Exception:
                     continue
