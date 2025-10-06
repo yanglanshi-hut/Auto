@@ -102,6 +102,28 @@ class UnifiedConfigManager:
             return env if env else {}
         return {}
 
+    def _get_from_credentials_format(self, data: Dict, site: str) -> List[Dict]:
+        """格式 1：从 credentials[site] 获取凭据"""
+        creds = data.get("credentials")
+        if not isinstance(creds, dict):
+            return []
+        items = creds.get(site)
+        return list(items) if isinstance(items, list) else []
+
+    def _get_from_users_format(self, users: List, site: str) -> List[Dict]:
+        """格式 2：从 users 数组按 site 字段过滤"""
+        return [
+            u for u in users
+            if isinstance(u, dict) and _normalize_site(u.get("site", "")) == site
+        ]
+
+    def _get_from_legacy_openi_format(self, users: List, site: str) -> List[Dict]:
+        """格式 3：旧版 OpenI 格式（无 site 字段）"""
+        if site != "openi":
+            return []
+        has_site_field = any(isinstance(u, dict) and "site" in u for u in users)
+        return [] if has_site_field else list(users)
+
     def get_all_users(self, site: str) -> List[Dict]:
         """仅从文件返回某站点的全部凭据记录。
 
@@ -118,31 +140,22 @@ class UnifiedConfigManager:
             return []
 
         # 格式 1：统一凭据格式
-        creds = data.get("credentials")
-        if isinstance(creds, dict):
-            items = creds.get(key)
-            if isinstance(items, list):
-                return list(items)
+        result = self._get_from_credentials_format(data, key)
+        if result:
+            return result
 
         # 格式 2 与 3：users 数组
         users = data.get("users")
-        if isinstance(users, list):
-            # 格式 2：按站点划分的 users（包含 "site" 字段）
-            site_filtered = [
-                u for u in users
-                if isinstance(u, dict) and _normalize_site(u.get("site", "")) == key
-            ]
-            if site_filtered:
-                return site_filtered
+        if not isinstance(users, list):
+            return []
 
-            # 格式 3：旧版 OpenI 格式（无 "site" 字段，默认均为 openi）
-            if key == "openi":
-                # 检查是否存在包含 "site" 字段的条目；若不存在，则全部视为 openi
-                has_site_field = any(isinstance(u, dict) and "site" in u for u in users)
-                if not has_site_field:
-                    return list(users)
+        # 格式 2：按站点划分
+        result = self._get_from_users_format(users, key)
+        if result:
+            return result
 
-        return []
+        # 格式 3：旧版 OpenI
+        return self._get_from_legacy_openi_format(users, key)
 
     def get_site_config(self, site: str) -> Dict:
         """返回站点级的配置字典。
