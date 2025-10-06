@@ -22,6 +22,9 @@ class CookieManager:
         else:
             self.base_dir = Path(base_dir)
 
+        # 首次初始化时自动迁移旧格式 Cookie 文件
+        self._migrate_legacy_cookies_once()
+
     def _cookie_path(self, site_name: str) -> Path:
         return (self.base_dir / f"{site_name}_cookies.json").resolve()
 
@@ -123,3 +126,60 @@ class CookieManager:
                 saved_at = None
 
         return cookies or [], saved_at
+
+    def _migrate_legacy_cookies_once(self) -> None:
+        """自动迁移旧格式 Cookie 文件（*.json → *_cookies.json）
+
+        只在首次初始化时执行一次，使用标记文件避免重复扫描。
+        """
+        try:
+            # 使用标记文件避免每次都扫描目录
+            marker = self.base_dir / ".cookies_migrated"
+            if marker.exists():
+                return
+
+            if not self.base_dir.exists():
+                return
+
+            # 扫描旧格式 Cookie 文件
+            migrated_count = 0
+            for old_path in self.base_dir.glob("*.json"):
+                # 跳过已经是新格式的文件
+                if old_path.stem.endswith("_cookies"):
+                    continue
+
+                # 跳过标记文件
+                if old_path.name.startswith("."):
+                    continue
+
+                # 构建新路径
+                site_name = old_path.stem
+                new_path = self.base_dir / f"{site_name}_cookies.json"
+
+                # 如果新路径已存在，跳过（避免覆盖）
+                if new_path.exists():
+                    continue
+
+                # 重命名文件
+                try:
+                    old_path.rename(new_path)
+                    migrated_count += 1
+                except Exception:
+                    # 迁移失败不影响程序运行
+                    pass
+
+            # 创建标记文件
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.touch()
+
+            if migrated_count > 0:
+                # 可选：记录迁移日志
+                try:
+                    from src.core.logger import setup_logger
+                    logger = setup_logger("cookies", get_project_paths().logs / "cookies.log")
+                    logger.info(f"已自动迁移 {migrated_count} 个 Cookie 文件到新格式")
+                except Exception:
+                    pass
+        except Exception:
+            # 静默失败，不影响 CookieManager 正常工作
+            pass

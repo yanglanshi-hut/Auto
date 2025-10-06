@@ -56,9 +56,12 @@ playwright install chromium
 
 ### 配置
 
-推荐使用统一配置文件方式（所有站点均支持）。环境变量仍保留作为向后兼容的备用方案。
+推荐使用统一配置文件方式（所有站点均支持）。
 
 **推荐方式**：使用 `config/users.json` 统一配置（所有站点）
+
+> **注意**：旧配置格式已废弃，首次运行时会自动迁移到新格式（会备份原配置）。
+> 环境变量方式仍支持但不推荐，作为向后兼容的备用方案。
 
 1. 复制配置模板：
 ```bash
@@ -83,7 +86,9 @@ cp config/users.json.example config/users.json
 }
 ```
 
-**备选方式**：环境变量（向后兼容）
+**备选方式**：环境变量（⚠️ 已废弃，仅作向后兼容）
+
+> **不推荐**：该方式已废弃，仅为老用户保留。新用户请使用上面的配置文件方式。
 
 ```bash
 # LinuxDO / AnyRouter（任一可用）
@@ -226,9 +231,15 @@ class NewSiteLogin(LoginAutomation):
 
 ## 配置说明
 
+### 配置优先级
+
+程序按以下优先级加载配置：
+1. **配置文件** - `config/users.json`（推荐）
+2. **环境变量** - 向后兼容，已废弃，不推荐新用户使用
+
 ### 配置格式
 
-**当前格式**（推荐 - 最简洁）：
+**推荐格式**（site-based users 数组）：
 ```json
 {
   "config": {
@@ -251,11 +262,18 @@ class NewSiteLogin(LoginAutomation):
 - `users`: 用户凭据列表，通过 `site` 字段区分站点
 - 支持同站点多账号：添加多个相同 `site` 的条目即可
 
-### 环境变量回退说明
+**自动迁移**：
+- 旧配置格式（如统一凭据格式、旧版 OpenI 格式）会在首次运行时自动迁移
+- 旧 Cookie 文件（`<site>.json`）会自动重命名为新格式（`<site>_cookies.json`）
+- 迁移前会自动备份原配置文件
+
+### 环境变量回退（已废弃）
+
+> **⚠️ 已废弃**：环境变量方式仅为老用户保留，新用户请使用配置文件。
 
 - **LinuxDO**: 优先读取 `config/users.json`，缺失时回退到 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
 - **AnyRouter**: 优先读取 `config/users.json`，缺失时回退到 `ANYROUTER_EMAIL` / `ANYROUTER_PASSWORD`，再回退到 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
-- **优先级总原则**: 配置文件 > 环境变量（向后兼容）
+- **优先级总原则**: 配置文件 > 环境变量
 
 ### 多用户配置示例
 

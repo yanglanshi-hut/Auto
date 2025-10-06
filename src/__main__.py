@@ -26,6 +26,50 @@ import argparse
 from typing import Optional
 
 
+def _auto_migrate_config_once() -> None:
+    """首次启动时自动迁移配置文件（只执行一次）"""
+    try:
+        from src.core.paths import get_project_paths
+        paths = get_project_paths()
+
+        # 使用标记文件避免重复迁移
+        marker = paths.data / ".config_migrated"
+        if marker.exists():
+            return
+
+        config_path = paths.config / "users.json"
+        if not config_path.exists():
+            # 配置文件不存在，无需迁移
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.touch()
+            return
+
+        # 调用迁移逻辑
+        import sys
+        from pathlib import Path
+
+        # 动态导入迁移脚本
+        migrate_script = paths.root / "scripts" / "migrate_config.py"
+        if migrate_script.exists():
+            # 使用 runpy 执行迁移脚本
+            import runpy
+            old_argv = sys.argv.copy()
+            try:
+                sys.argv = [str(migrate_script), "--apply"]
+                runpy.run_path(str(migrate_script), run_name="__main__")
+            except SystemExit:
+                pass
+            finally:
+                sys.argv = old_argv
+
+        # 标记迁移已完成
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()
+    except Exception:
+        # 静默失败，不影响主程序运行
+        pass
+
+
 def _add_common_options(sp: argparse.ArgumentParser) -> None:
     sp.add_argument(
         "--headless",
@@ -197,6 +241,9 @@ def _handle_openi(args: argparse.Namespace) -> int:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    # 首次启动时自动迁移配置（只执行一次）
+    _auto_migrate_config_once()
+
     parser = build_parser()
     args = parser.parse_args(argv)
 
