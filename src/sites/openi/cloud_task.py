@@ -104,6 +104,21 @@ class CloudTaskManager:
 
     # ----- 高层流程 -----
     def handle_cloud_task(self, page: Page) -> None:
+        self._search_task(page)
+        task_status = self._check_task_status(page)
+
+        # 如果任务正在运行，先停止
+        if task_status == 'RUNNING':
+            logger.info("\n任务正在运行，需要先停止...")
+            self.stop_task(page, wait_for_stopped=True, timeout=30)
+            task_status = 'STOPPED'
+
+        # 仅在任务停止或无状态时启动
+        if task_status in ['STOPPED', None]:
+            self._start_task(page)
+
+    def _search_task(self, page: Page) -> None:
+        """搜索指定任务"""
         logger.info(f"\n搜索任务 '{self.task_name}'...")
         search_input = page.get_by_role('textbox', name='搜索任务名称')
         search_input.fill(self.task_name)
@@ -111,45 +126,52 @@ class CloudTaskManager:
         page.wait_for_timeout(2000)
         logger.info("搜索完成")
 
+    def _check_task_status(self, page: Page) -> Optional[str]:
+        """检查并返回任务状态"""
         logger.info("\n检查任务状态...")
         page.wait_for_timeout(2000)
         task_status = self.get_task_status(page)
         if task_status:
             logger.info(f"  - 当前任务状态 {task_status}")
+        return task_status
 
-        if task_status == 'RUNNING':
-            logger.info("\n任务正在运行，需要先停止...")
-            self.stop_task(page, wait_for_stopped=True, timeout=30)
-            task_status = 'STOPPED'
+    def _start_task(self, page: Page) -> None:
+        """启动任务并等待完成"""
+        if not self._click_debug_again_button(page):
+            return
 
-        if task_status in ['STOPPED', None]:
-            logger.info("\n点击'再次调试'按钮...")
-            page.wait_for_timeout(3000)
-            try:
-                debug_again_button = page.get_by_role('link', name='再次调试')
-                debug_again_button.wait_for(state='visible', timeout=10000)
-                if debug_again_button.is_enabled():
-                    debug_again_button.click()
-                    logger.info("  - 已点击'再次调试'")
-                else:
-                    logger.warning("  - '再次调试'按钮被禁用，跳过任务启动")
-                    return
-            except Exception as exc:
-                logger.error(f"  - 无法点击'再次调试'按钮: {exc}")
-                return
+        page.wait_for_timeout(5000)
+        running_ok = self.wait_for_task_status(page, 'RUNNING', timeout=60)
 
-            page.wait_for_timeout(5000)
-            running_ok = self.wait_for_task_status(page, 'RUNNING', timeout=60)
+        if running_ok:
+            logger.info(f"\n任务运行中，等待{self.run_duration}秒...")
+            time.sleep(self.run_duration)
+        else:
+            logger.warning("\n任务启动超时，尝试停止任务...")
 
-            if running_ok:
-                logger.info(f"\n任务运行中，等待{self.run_duration}秒...")
-                time.sleep(self.run_duration)
-            else:
-                logger.warning("\n任务启动超时，尝试停止任务...")
+        self.stop_task(page, wait_for_stopped=False)
+        page.wait_for_timeout(2000)
+        logger.info("任务操作完成")
 
-            self.stop_task(page, wait_for_stopped=False)
-            page.wait_for_timeout(2000)
-            logger.info("任务操作完成")
+    def _click_debug_again_button(self, page: Page) -> bool:
+        """点击'再次调试'按钮，返回是否成功"""
+        logger.info("\n点击'再次调试'按钮...")
+        page.wait_for_timeout(3000)
+
+        try:
+            debug_again_button = page.get_by_role('link', name='再次调试')
+            debug_again_button.wait_for(state='visible', timeout=10000)
+
+            if not debug_again_button.is_enabled():
+                logger.warning("  - '再次调试'按钮被禁用，跳过任务启动")
+                return False
+
+            debug_again_button.click()
+            logger.info("  - 已点击'再次调试'")
+            return True
+        except Exception as exc:
+            logger.error(f"  - 无法点击'再次调试'按钮: {exc}")
+            return False
 
 
 __all__ = ["CloudTaskManager"]

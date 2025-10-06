@@ -47,28 +47,32 @@ class LinuxdoLogin(LoginAutomation):
         try:
             page.wait_for_timeout(2000)
             current_url = page.url
+
+            # 检查 URL 是否已跳转
             if '/login' not in current_url:
                 logger.info("已登录，URL 已跳转")
                 return True
 
-            login_form = page.locator('form, input[name="login"], input[placeholder*="邮箱"]')
-            if login_form.count() == 0:
+            # 检查登录表单是否存在
+            if page.locator('form, input[name="login"], input[placeholder*="邮箱"]').count() == 0:
                 logger.info("已登录，无登录表单")
                 return True
 
-            welcome_text = page.locator('text=欢迎回来')
-            if welcome_text.count() == 0:
+            # 检查欢迎文本是否不存在
+            if page.locator('text=欢迎回来').count() == 0:
                 logger.info("已登录，未发现欢迎文本")
                 return True
 
             return False
         except Exception as exc:
             logger.warning(f"验证登录时出错: {exc}")
-            try:
-                if '/login' not in page.url:
-                    return True
-            except Exception:
-                pass
+            return self._fallback_verify_login(page)
+
+    def _fallback_verify_login(self, page: Page) -> bool:
+        """异常情况下的登录验证回退逻辑"""
+        try:
+            return '/login' not in page.url
+        except Exception:
             return False
 
     def _submit_login_form(self, page: Page, password_input) -> bool:
@@ -134,22 +138,27 @@ class LinuxdoLogin(LoginAutomation):
     def after_login(self, page: Page, **_credentials) -> None:
         try:
             current_url = page.url
+
+            # 处理异常 URL
             if 'chrome-error' in current_url or 'about:' in current_url:
-                logger.warning("页面 URL 异常，尝试重新载入首页...")
-                try:
-                    page.goto('https://linux.do/', timeout=60000, wait_until='domcontentloaded')
-                    page.wait_for_timeout(2000)
-                    current_url = page.url
-                except Exception:
-                    pass
+                current_url = self._reload_homepage(page)
 
             logger.info("论坛首页已加载")
             logger.info(f"当前 URL: {current_url}")
-
             logger.info("保留会话，等待 3 秒以稳定会话状态...")
             page.wait_for_timeout(3000)
         except Exception as exc:
             logger.error(f"登录后处理出错: {exc}")
+
+    def _reload_homepage(self, page: Page) -> str:
+        """重新加载首页并返回 URL"""
+        logger.warning("页面 URL 异常，尝试重新载入首页...")
+        try:
+            page.goto('https://linux.do/', timeout=60000, wait_until='domcontentloaded')
+            page.wait_for_timeout(2000)
+            return page.url
+        except Exception:
+            return page.url
 
 
 def login_to_linuxdo(
