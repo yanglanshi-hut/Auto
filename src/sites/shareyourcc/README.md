@@ -31,13 +31,41 @@ ShareYourCC (https://shareyour.cc/) 自动化登录脚本，支持邮箱密码�
 
 在 `config/users.json` 中添加：
 
+#### 选项1: 使用邮箱密码登录（推荐）
+
 ```json
 {
   "site": "shareyourcc",
+  "login_type": "credentials",
   "email": "your_email@example.com",
   "password": "your_password"
 }
 ```
+
+#### 选项2: 使用 LinuxDo OAuth 登录
+
+```json
+{
+  "site": "shareyourcc",
+  "login_type": "linuxdo_oauth"
+}
+```
+
+**注意**: 使用 LinuxDo OAuth 时，需确保配置文件中有 LinuxDo 账号：
+
+```json
+{
+  "site": "linuxdo",
+  "email": "your_linuxdo_email@example.com",
+  "password": "your_linuxdo_password"
+}
+```
+
+#### login_type 说明
+
+- `credentials`: 直接使用 ShareYourCC 邮箱密码登录
+- `linuxdo_oauth`: 使用 LinuxDo OAuth 授权登录（自动复用 LinuxDo 登录状态）
+- 不指定 login_type: 优先使用邮箱密码，失败后尝试 LinuxDo OAuth
 
 ### 方式二：环境变量
 
@@ -45,8 +73,11 @@ ShareYourCC (https://shareyour.cc/) 自动化登录脚本，支持邮箱密码�
 # ShareYourCC 邮箱密码登录
 export SHAREYOURCC_EMAIL='your_email@example.com'
 export SHAREYOURCC_PASSWORD='your_password'
+export SHAREYOURCC_LOGIN_TYPE='credentials'  # 可选，默认为 credentials
 
-# 或使用 LinuxDo OAuth 登录（需要 LinuxDo 凭据）
+# 使用 LinuxDo OAuth 登录
+export SHAREYOURCC_LOGIN_TYPE='linuxdo_oauth'
+# 需要额外配置 LinuxDo 凭据：
 export LINUXDO_EMAIL='your_linuxdo_email'
 export LINUXDO_PASSWORD='your_linuxdo_password'
 ```
@@ -54,29 +85,46 @@ export LINUXDO_PASSWORD='your_linuxdo_password'
 ### 方式三：代码调用
 
 ```python
-from src.sites.shareyourcc.login import login_to_shareyourcc
+from src.sites.shareyourcc.login import login_to_shareyourcc, ShareyourccLogin
 
-# 使用邮箱密码登录
+# 1. 使用邮箱密码登录（最简单）
 login_to_shareyourcc(
     email="your_email@example.com",
     password="your_password"
 )
 
-# 使用 LinuxDo OAuth 登录（不提供邮箱密码，将自动使用 OAuth）
-login_to_shareyourcc()  # 需要配置 LinuxDo 凭据
+# 2. 使用配置文件中的凭据（自动读取 config/users.json）
+login_to_shareyourcc()
 
-# 跳过 Cookie 登录
+# 3. 跳过 Cookie 登录（强制重新登录）
 login_to_shareyourcc(
     email="your_email@example.com",
     password="your_password",
     use_cookie=False
 )
 
-# 无头模式运行
+# 4. 无头模式运行
 login_to_shareyourcc(
     email="your_email@example.com",
     password="your_password",
     headless=True
+)
+
+# 5. 高级用法 - 使用类实例（支持多用户）
+automation = ShareyourccLogin(headless=False)
+
+# 邮箱密码登录
+automation.run(
+    use_cookie=True,
+    email="user@example.com",
+    password="password",
+    login_type="credentials"
+)
+
+# LinuxDo OAuth 登录
+automation.run(
+    use_cookie=True,
+    login_type="linuxdo_oauth"
 )
 ```
 

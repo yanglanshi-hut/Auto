@@ -1,13 +1,14 @@
 # AnyRouter 自动登录脚本
 
-使用 Playwright 通过 LinuxDO OAuth 实现 AnyRouter 的自动登录，支持 Cookie 保存和快速登录功能。
+使用 Playwright 实现 AnyRouter 的自动登录，支持多种登录方式、Cookie 保存和快速登录功能。
 
 ## 功能特性
 
-- ✅ 通过 LinuxDO OAuth 自动登录 AnyRouter
+- ✅ **多种登录方式**：邮箱密码、GitHub OAuth、LinuxDO OAuth
 - ✅ 保存登录 Cookie 到本地
 - ✅ 支持 Cookie 快速登录（无需重复授权）
 - ✅ Cookie 过期自动重新登录
+- ✅ 自动复用 GitHub/LinuxDO 登录状态
 - ✅ 支持无头模式运行
 - ✅ 自动跳转到 API 令牌页面
 
@@ -33,35 +34,137 @@ playwright install chromium
 
 ## 使用方法
 
-### 首次登录
+### 方式一：配置文件（推荐）
 
-确保您已经在浏览器中登录了 LinuxDO（可以先运行 `linuxdo_login.py` 登录 LinuxDO）。
+在 `config/users.json` 中添加：
 
-然后运行脚本：
+#### 选项1: 使用邮箱密码登录
 
-```bash
-python anyrouter_login.py
+```json
+{
+  "site": "anyrouter",
+  "login_type": "credentials",
+  "email": "your_email@example.com",
+  "password": "your_password"
+}
 ```
 
-首次运行会：
-1. 访问 AnyRouter 登录页面
-2. 点击"使用 LinuxDO 继续"
-3. 在 LinuxDO 授权页面自动点击"允许"
-4. 完成登录并保存 Cookie 到 `anyrouter_cookies.json`
+#### 选项2: 使用 GitHub OAuth 登录
 
-### 快速登录
+```json
+{
+  "site": "anyrouter",
+  "login_type": "github_oauth"
+}
+```
 
-第二次及以后运行时，脚本会自动使用保存的 Cookie 进行快速登录，无需重新授权。
+**注意**: 使用 GitHub OAuth 时，需确保配置文件中有 GitHub 账号：
 
-如果 Cookie 过期，脚本会自动重新进行 OAuth 登录并更新 Cookie。
+```json
+{
+  "site": "github",
+  "username": "your_github_username",
+  "password": "your_github_password"
+}
+```
+
+#### 选项3: 使用 LinuxDo OAuth 登录（默认）
+
+```json
+{
+  "site": "anyrouter",
+  "login_type": "linuxdo_oauth"
+}
+```
+
+**注意**: 使用 LinuxDo OAuth 时，需确保配置文件中有 LinuxDo 账号：
+
+```json
+{
+  "site": "linuxdo",
+  "email": "your_linuxdo_email@example.com",
+  "password": "your_linuxdo_password"
+}
+```
+
+#### login_type 说明
+
+- `credentials`: 直接使用 AnyRouter 邮箱密码登录
+- `github_oauth`: 使用 GitHub OAuth 授权登录（自动复用 GitHub 登录状态）
+- `linuxdo_oauth`: 使用 LinuxDo OAuth 授权登录（自动复用 LinuxDo 登录状态，默认）
+
+### 方式二：环境变量
+
+```bash
+# AnyRouter 邮箱密码登录
+export ANYROUTER_EMAIL='your_email@example.com'
+export ANYROUTER_PASSWORD='your_password'
+export ANYROUTER_LOGIN_TYPE='credentials'
+
+# 使用 GitHub OAuth 登录
+export ANYROUTER_LOGIN_TYPE='github_oauth'
+# 需要额外配置 GitHub 凭据：
+export GITHUB_USERNAME='your_github_username'
+export GITHUB_PASSWORD='your_github_password'
+
+# 使用 LinuxDo OAuth 登录
+export ANYROUTER_LOGIN_TYPE='linuxdo_oauth'
+# 需要额外配置 LinuxDo 凭据：
+export LINUXDO_EMAIL='your_linuxdo_email'
+export LINUXDO_PASSWORD='your_linuxdo_password'
+```
+
+### 方式三：代码调用
+
+```python
+from src.sites.anyrouter.login import login_to_anyrouter, AnyrouterLogin
+
+# 1. 使用默认配置（从 config/users.json 读取）
+login_to_anyrouter()
+
+# 2. 无头模式运行
+login_to_anyrouter(headless=True)
+
+# 3. 跳过 Cookie 登录
+login_to_anyrouter(use_cookie=False)
+
+# 4. 高级用法 - 使用类实例
+automation = AnyrouterLogin(headless=False)
+
+# 邮箱密码登录
+automation.run(
+    use_cookie=True,
+    email="user@example.com",
+    password="password",
+    login_type="credentials"
+)
+
+# GitHub OAuth 登录
+automation.run(
+    use_cookie=True,
+    login_type="github_oauth"
+)
+
+# LinuxDo OAuth 登录
+automation.run(
+    use_cookie=True,
+    login_type="linuxdo_oauth"
+)
+```
+
+### 方式四：直接运行
+
+```bash
+python -m src.sites.anyrouter.login
+```
 
 ## 配置说明
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
-| `USE_COOKIE` | 是否优先使用 Cookie 登录 | `True` |
-| `HEADLESS` | 是否以无头模式运行浏览器 | `False` |
-| `COOKIE_FILE` | Cookie 保存文件路径 | `anyrouter_cookies.json` |
+| `use_cookie` | 是否优先使用 Cookie 登录 | `True` |
+| `headless` | 是否以无头模式运行浏览器 | `False` |
+| `login_type` | 登录方式 | `linuxdo_oauth` |
 
 ## 文件说明
 

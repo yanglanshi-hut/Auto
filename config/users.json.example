@@ -25,8 +25,32 @@
     },
     {
       "site": "anyrouter",
+      "login_type": "credentials",
       "email": "AnyRouter邮箱@example.com",
       "password": "密码"
+    },
+    {
+      "site": "anyrouter",
+      "login_type": "github_oauth"
+    },
+    {
+      "site": "anyrouter",
+      "login_type": "linuxdo_oauth"
+    },
+    {
+      "site": "shareyourcc",
+      "login_type": "linuxdo_oauth",
+      "comment": "使用 LinuxDo OAuth 登录（需配置 linuxdo 账号）"
+    },
+    {
+      "site": "shareyourcc",
+      "login_type": "google_oauth",
+      "comment": "使用 Google OAuth 登录"
+    },
+    {
+      "site": "shareyourcc",
+      "login_type": "github_oauth",
+      "comment": "使用 GitHub OAuth 登录（需配置 github 账号）"
     }
   ]
 }

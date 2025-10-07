@@ -46,11 +46,24 @@ class LoginAutomation(abc.ABC):
         *,
         verify_url: Optional[str] = None,
         expire_days: Optional[int] = None,
+        required_metadata: Optional[Dict[str, Any]] = None,
     ) -> bool:
-        """尝试使用先前保存的 Cookie 进行认证。"""
+        """尝试使用先前保存的 Cookie 进行认证。
+        
+        Args:
+            page: Playwright 页面对象
+            verify_url: 验证 URL
+            expire_days: Cookie 有效期（天）
+            required_metadata: 必需的元数据匹配，如 {"login_type": "credentials", "email": "user@example.com"}
+        """
         effective_expire_days = self.cookie_expire_days if expire_days is None else expire_days
 
-        if not self.cookie_manager.load_cookies(page.context, self.site_name, effective_expire_days):
+        if not self.cookie_manager.load_cookies(
+            page.context, 
+            self.site_name, 
+            effective_expire_days,
+            required_metadata=required_metadata
+        ):
             return False
 
         if verify_url:
@@ -93,13 +106,19 @@ class LoginAutomation(abc.ABC):
         except Exception:
             pass
 
-    def _verify_and_save_cookies(self, context, site_name: str) -> None:
-        """验证并保存 Cookie（降低嵌套）"""
+    def _verify_and_save_cookies(self, context, site_name: str, metadata: Optional[Dict[str, Any]] = None) -> None:
+        """验证并保存 Cookie（降低嵌套）
+        
+        Args:
+            context: Playwright 浏览器上下文
+            site_name: 站点名称
+            metadata: 可选的元数据，如 {"login_type": "credentials", "email": "user@example.com"}
+        """
         # 保存前验证 Cookie 纯净性（如果子类提供了验证方法）
         if hasattr(self, '_verify_context_clean'):
             if not self._verify_context_clean(context):
                 self._log_cookie_warning(site_name)
-        self.cookie_manager.save_cookies(context, site_name)
+        self.cookie_manager.save_cookies(context, site_name, metadata=metadata)
 
     def run(
         self,

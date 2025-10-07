@@ -37,13 +37,23 @@ class CookieManager:
         # 默认返回新格式路径
         return cookie_path
 
-    def save_cookies(self, context, site_name: str) -> Path:
-        """持久化保存来自指定 Playwright 上下文的 cookies。"""
+    def save_cookies(self, context, site_name: str, metadata: Optional[dict] = None) -> Path:
+        """持久化保存来自指定 Playwright 上下文的 cookies。
+        
+        Args:
+            context: Playwright 浏览器上下文
+            site_name: 站点名称
+            metadata: 可选的元数据，如 {"login_type": "credentials", "email": "user@example.com"}
+        """
         cookies = context.cookies()
         payload = {
             "cookies": cookies,
             "saved_at": datetime.now().isoformat(),
         }
+        
+        # 添加元数据
+        if metadata:
+            payload.update(metadata)
 
         # 始终使用新格式保存
         cookie_path = (self.base_dir / f"{site_name}_cookies.json").resolve()
@@ -54,8 +64,24 @@ class CookieManager:
 
         return cookie_path
 
-    def load_cookies(self, context, site_name: str, expire_days: int = 7) -> bool:
-        """若仍然有效，则将 cookies 恢复到 Playwright 上下文。"""
+    def load_cookies(
+        self, 
+        context, 
+        site_name: str, 
+        expire_days: int = 7,
+        required_metadata: Optional[dict] = None
+    ) -> bool:
+        """若仍然有效，则将 cookies 恢复到 Playwright 上下文。
+        
+        Args:
+            context: Playwright 浏览器上下文
+            site_name: 站点名称
+            expire_days: Cookie 有效天数
+            required_metadata: 必需的元数据匹配，如 {"login_type": "credentials", "email": "user@example.com"}
+        
+        Returns:
+            True 表示成功加载，False 表示失败或不匹配
+        """
         cookie_path = self.get_cookie_path(site_name)
         if not cookie_path.exists():
             return False
@@ -65,6 +91,11 @@ class CookieManager:
                 data = json.load(handle)
         except (OSError, json.JSONDecodeError):
             return False
+
+        # 检查元数据是否匹配
+        if required_metadata:
+            if not self._check_metadata_match(data, required_metadata):
+                return False
 
         cookies, saved_at = self._parse_cookie_payload(data, cookie_path)
         if not cookies:
@@ -83,6 +114,14 @@ class CookieManager:
         except Exception:
             return False
 
+        return True
+    
+    def _check_metadata_match(self, data: dict, required_metadata: dict) -> bool:
+        """检查 Cookie 元数据是否匹配要求。"""
+        for key, required_value in required_metadata.items():
+            stored_value = data.get(key)
+            if stored_value != required_value:
+                return False
         return True
 
     def _parse_cookie_payload(self, data, cookie_path: Path) -> Tuple[list, Optional[datetime]]:

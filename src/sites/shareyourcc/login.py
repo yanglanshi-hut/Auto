@@ -11,6 +11,12 @@ from src.core.base import LoginAutomation
 from src.core.config import UnifiedConfigManager
 from src.core.logger import setup_logger
 from src.core.paths import get_project_paths
+from src.sites.shareyourcc.oauth_helpers import (
+    click_oauth_button,
+    confirm_google_oauth_consent,
+    confirm_github_oauth_consent,
+    confirm_linuxdo_oauth_consent,
+)
 
 logger = setup_logger("shareyourcc", get_project_paths().logs / "shareyourcc.log")
 
@@ -27,18 +33,37 @@ class ShareyourccLogin(LoginAutomation):
         *,
         verify_url: Optional[str] = None,
         expire_days: Optional[int] = None,
+        login_type: Optional[str] = None,
+        email: Optional[str] = None,
     ) -> bool:
+        """尝试使用 Cookie 快速登录（带元数据匹配）"""
         cookie_path = self.cookie_manager.get_cookie_path(self.site_name)
         if not cookie_path.exists():
             logger.info(f"Cookie 文件不存在: {cookie_path}")
             return False
 
-        logger.info("尝试使用 Cookie 快速登录...")
-        success = super().try_cookie_login(page, verify_url=verify_url, expire_days=expire_days)
+        # 构建必需的元数据
+        required_metadata = {}
+        if login_type:
+            required_metadata['login_type'] = login_type
+        if email and login_type == 'credentials':
+            # credentials 模式需要匹配邮箱
+            required_metadata['email'] = email
+
+        logger.info(f"尝试使用 Cookie 快速登录（login_type={login_type}, email={email if login_type=='credentials' else 'N/A'}）...")
+        success = super().try_cookie_login(
+            page, 
+            verify_url=verify_url, 
+            expire_days=expire_days,
+            required_metadata=required_metadata if required_metadata else None
+        )
         if success:
             logger.info("Cookie 登录成功")
         else:
-            logger.info("Cookie 已过期，需要重新登录")
+            if required_metadata:
+                logger.info(f"Cookie 不匹配或已过期（需要: {required_metadata}），需要重新登录")
+            else:
+                logger.info("Cookie 已过期，需要重新登录")
         return success
 
     def verify_login(self, page: Page) -> bool:
@@ -168,105 +193,82 @@ class ShareyourccLogin(LoginAutomation):
             logger.error(f"导航到登录页面失败: {exc}")
             return False
 
-    def login_with_credentials(self, page: Page, email: str, password: str) -> bool:
-        """使用邮箱密码登录"""
-        logger.info(f"使用邮箱密码登录: {email}")
-
-        # 导航到登录页面
-        if not self._navigate_to_login_page(page):
-            return False
-
+    def login_with_google_oauth(self, page: Page) -> bool:
+        """Google OAuth 登录流程"""
+        logger.info("开始 Google OAuth 登录")
+        
         try:
-            # 等待登录表单加载
-            page.wait_for_timeout(1000)
-
-            # 填写邮箱 - 适配对话框和独立页面
-            logger.info("填写邮箱...")
-            email_selectors = [
-                'input[placeholder*="邮箱"]',
-                'input[type="email"]',
-                'dialog input[placeholder*="邮箱"]',
-                'dialog input[type="email"]',
-            ]
+            # 阶段 0: 确保 Google 已登录
+            if not self._ensure_google_logged_in(page):
+                logger.error("无法确保 Google 登录状态")
+                return False
             
-            email_filled = False
-            for selector in email_selectors:
-                try:
-                    email_input = page.locator(selector).first
-                    if email_input.count() > 0:
-                        email_input.fill(email)
-                        email_filled = True
-                        break
-                except Exception:
-                    continue
-
-            if not email_filled:
-                logger.error("未找到邮箱输入框")
+            # 返回 ShareYourCC 首页
+            page.goto('https://shareyour.cc/', timeout=60000)
+            page.wait_for_load_state('domcontentloaded')
+            page.wait_for_timeout(2000)
+            
+            # 导航到登录页面
+            if not self._navigate_to_login_page(page):
+                logger.error("无法导航到登录页面")
                 return False
-
-            page.wait_for_timeout(300)
-
-            # 填写密码 - 适配对话框和独立页面
-            logger.info("填写密码...")
-            password_selectors = [
-                'input[type="password"]',
-                'dialog input[type="password"]',
-                'input[placeholder*="密码"]',
-            ]
-
-            password_filled = False
-            for selector in password_selectors:
-                try:
-                    password_input = page.locator(selector).first
-                    if password_input.count() > 0:
-                        password_input.fill(password)
-                        password_filled = True
-                        break
-                except Exception:
-                    continue
-
-            if not password_filled:
-                logger.error("未找到密码输入框")
+            
+            # 阶段 1: 点击 Google OAuth 按钮
+            auth_page = self._click_google_oauth_button(page)
+            if not auth_page:
+                logger.error("未能打开 Google OAuth 窗口")
                 return False
-
-            page.wait_for_timeout(300)
-
-            # 点击登录按钮
-            logger.info("提交登录...")
-            submit_selectors = [
-                'button:has-text("登录")',
-                'dialog button:has-text("登录")',
-                'button[type="submit"]',
-            ]
-
-            submitted = False
-            for selector in submit_selectors:
-                try:
-                    submit_button = page.locator(selector).first
-                    if submit_button.count() > 0:
-                        submit_button.click(timeout=5000)
-                        submitted = True
-                        break
-                except Exception:
-                    continue
-
-            if not submitted:
-                logger.error("未找到登录提交按钮")
+            
+            # 阶段 2: Google 授权确认（如果需要）
+            if not self._confirm_google_oauth_consent(auth_page):
+                logger.error("Google 授权确认失败")
                 return False
-
-            logger.info("等待登录完成...")
-            page.wait_for_timeout(3000)
-
-            # 验证登录结果
-            if self.verify_login(page):
-                logger.info("登录成功")
-                return True
-
-            logger.error("登录失败")
-            return False
-
+            
+            # 最终验证
+            return self._verify_oauth_success(page)
+            
         except Exception as exc:
-            logger.error(f"邮箱密码登录失败: {exc}")
+            logger.error(f"Google OAuth 流程异常: {exc}", exc_info=True)
+            self.browser_manager.save_error_screenshot(page, 'shareyourcc_google_oauth_error.png')
+            return False
+    
+    def login_with_github_oauth(self, page: Page) -> bool:
+        """GitHub OAuth 登录流程"""
+        logger.info("开始 GitHub OAuth 登录")
+        
+        try:
+            # 阶段 0: 确保 GitHub 已登录
+            if not self._ensure_github_logged_in(page):
+                logger.error("无法确保 GitHub 登录状态")
+                return False
+            
+            # 返回 ShareYourCC 首页
+            page.goto('https://shareyour.cc/', timeout=60000)
+            page.wait_for_load_state('domcontentloaded')
+            page.wait_for_timeout(2000)
+            
+            # 导航到登录页面
+            if not self._navigate_to_login_page(page):
+                logger.error("无法导航到登录页面")
+                return False
+            
+            # 阶段 1: 点击 GitHub OAuth 按钮
+            auth_page = self._click_github_oauth_button(page)
+            if not auth_page:
+                logger.error("未能打开 GitHub OAuth 窗口")
+                return False
+            
+            # 阶段 2: GitHub 授权确认（如果需要）
+            if not self._confirm_github_oauth_consent(auth_page):
+                logger.error("GitHub 授权确认失败")
+                return False
+            
+            # 最终验证
+            return self._verify_oauth_success(page)
+            
+        except Exception as exc:
+            logger.error(f"GitHub OAuth 流程异常: {exc}", exc_info=True)
+            self.browser_manager.save_error_screenshot(page, 'shareyourcc_github_oauth_error.png')
             return False
 
     def login_with_linuxdo_oauth(self, page: Page) -> bool:
@@ -309,71 +311,42 @@ class ShareyourccLogin(LoginAutomation):
             return False
 
     def _click_linuxdo_oauth_button(self, page: Page) -> Optional[Page]:
-        """点击 LinuxDo OAuth 按钮（处理新窗口或当前页面跳转）"""
-        logger.info("点击 LinuxDo OAuth 按钮...")
+        """点击 LinuxDo OAuth 按钮"""
+        return click_oauth_button(page, 'linuxdo')
+    
+    def _click_google_oauth_button(self, page: Page) -> Optional[Page]:
+        """点击 Google OAuth 按钮"""
+        return click_oauth_button(page, 'google')
+    
+    def _click_github_oauth_button(self, page: Page) -> Optional[Page]:
+        """点击 GitHub OAuth 按钮"""
+        return click_oauth_button(page, 'github')
 
-        try:
-            # OAuth 按钮选择器
-            oauth_selectors = [
-                'button:has-text("LINUX DO")',
-                'button:has-text("LinuxDo")',
-                'button:has-text("使用 LINUX DO 登录")',
-                'dialog button:has-text("LINUX DO")',
-                'dialog button:has-text("LinuxDo")',
-            ]
-
-            # 尝试点击并捕获新窗口
-            for selector in oauth_selectors:
-                try:
-                    button = page.locator(selector).first
-                    if button.count() > 0:
-                        logger.info(f"找到 OAuth 按钮: {selector}")
-                        
-                        # 尝试捕获新窗口
-                        try:
-                            with page.expect_popup(timeout=3000) as popup_info:
-                                button.click(timeout=5000)
-                            
-                            auth_page = popup_info.value
-                            auth_page.wait_for_load_state('domcontentloaded')
-                            logger.info(f"LinuxDo OAuth 在新窗口打开: {auth_page.url}")
-                            return auth_page
-                        except Exception:
-                            # 没有新窗口，检查是否在当前页面跳转
-                            page.wait_for_timeout(2000)
-                            page.wait_for_load_state('domcontentloaded')
-                            
-                            if 'linux.do' in page.url:
-                                logger.info(f"LinuxDo OAuth 在当前页面打开: {page.url}")
-                                return page
-                            
-                            # 可能跳转到其他OAuth页面
-                            if '/oauth' in page.url or '/auth' in page.url:
-                                logger.info(f"OAuth 页面已打开: {page.url}")
-                                return page
-                except Exception as exc:
-                    logger.debug(f"尝试选择器 {selector} 失败: {exc}")
-                    continue
-
-            # 如果没有找到按钮，尝试直接导航到 OAuth URL
-            logger.warning("未找到 OAuth 按钮，尝试直接导航...")
-            page.goto('https://shareyour.cc/auth/linuxdo', timeout=30000)
-            page.wait_for_load_state('domcontentloaded')
-            page.wait_for_timeout(2000)
-            
-            if 'linux.do' in page.url or '/auth' in page.url or '/oauth' in page.url:
-                logger.info(f"直接导航到 OAuth 页面: {page.url}")
-                return page
-
-            logger.error("无法打开 LinuxDo OAuth")
-            return None
-
-        except Exception as exc:
-            logger.error(f"点击 LinuxDo OAuth 按钮失败: {exc}")
-            return None
-
+    def _ensure_google_logged_in(self, page: Page) -> bool:
+        """确保 Google 已登录
+        
+        注意：目前假设用户已在浏览器中登录 Google，
+        或者 OAuth 流程会自动处理登录。
+        """
+        logger.info("检查 Google 登录状态...")
+        logger.info("Google OAuth 将在授权页面自动处理登录")
+        return True
+    
+    def _ensure_github_logged_in(self, page: Page) -> bool:
+        """确保 GitHub 已登录
+        
+        注意：目前假设用户已在浏览器中登录 GitHub，
+        或者 OAuth 流程会自动处理登录。
+        """
+        logger.info("检查 GitHub 登录状态...")
+        logger.info("GitHub OAuth 将在授权页面自动处理登录")
+        return True
+    
     def _ensure_linuxdo_logged_in(self, page: Page) -> bool:
-        """确保 LinuxDO 已登录（优先使用 Cookie，失败则调用登录流程）"""
+        """确保 LinuxDO 已登录（优先使用 Cookie，失败则调用登录流程）
+        
+        自动从统一配置中读取 LinuxDO 凭据，无需额外配置。
+        """
         from src.sites.linuxdo.login import LinuxdoLogin
 
         logger.info("检查 LinuxDO 登录状态...")
@@ -402,9 +375,21 @@ class ShareyourccLogin(LoginAutomation):
 
         # Cookie 无效或不存在，执行完整登录
         logger.info("需要重新登录 LinuxDO")
-        email, password = self._get_linuxdo_credentials()
+        
+        # 从统一配置中读取 LinuxDO 凭据
+        try:
+            cfg = UnifiedConfigManager()
+            linuxdo_creds = cfg.get_credentials('linuxdo', fallback_env=True)
+            email = linuxdo_creds.get('email', '')
+            password = linuxdo_creds.get('password', '')
+        except Exception as exc:
+            logger.warning(f"从配置读取 LinuxDO 凭据失败: {exc}")
+            email = ''
+            password = ''
+        
         if not email or not password:
-            logger.error("未提供 LinuxDO 凭据")
+            logger.error("未在配置或环境变量中找到 LinuxDO 凭据")
+            logger.info("请在 config/users.json 中添加 LinuxDO 用户或设置环境变量 LINUXDO_EMAIL 和 LINUXDO_PASSWORD")
             return False
 
         # 创建 LinuxdoLogin 实例并复用浏览器
@@ -429,39 +414,16 @@ class ShareyourccLogin(LoginAutomation):
             return False
 
     def _confirm_oauth_consent(self, auth_page: Page) -> bool:
-        """确认 OAuth 授权"""
-        # 如果不在 LinuxDO 域，说明已跳转，无需授权
-        if 'linux.do' not in auth_page.url:
-            logger.info("已跳转，跳过授权确认")
-            return True
-
-        # 勾选"记住授权"
-        remember_checkbox = auth_page.locator('role=checkbox[name="记住这次授权"]')
-        if remember_checkbox.count() > 0:
-            try:
-                remember_checkbox.first.check(timeout=300)
-                logger.info("已勾选记住授权")
-            except Exception:
-                pass
-
-        # 点击"允许"
-        allow_buttons = (
-            'role=link[name="允许"]',
-            'role=button[name="允许"]',
-            'text=允许',
-        )
-
-        for selector in allow_buttons:
-            try:
-                auth_page.locator(selector).first.click(timeout=5000)
-                logger.info("已点击允许授权")
-                auth_page.wait_for_timeout(2000)
-                return True
-            except Exception:
-                continue
-
-        logger.warning("未找到允许按钮，可能已自动跳转")
-        return True
+        """确认 LinuxDO OAuth 授权（向后兼容）"""
+        return confirm_linuxdo_oauth_consent(auth_page)
+    
+    def _confirm_google_oauth_consent(self, auth_page: Page) -> bool:
+        """确认 Google OAuth 授权"""
+        return confirm_google_oauth_consent(auth_page)
+    
+    def _confirm_github_oauth_consent(self, auth_page: Page) -> bool:
+        """确认 GitHub OAuth 授权"""
+        return confirm_github_oauth_consent(auth_page)
 
     def _verify_oauth_success(self, page: Page) -> bool:
         """验证 OAuth 登录成功"""
@@ -525,38 +487,43 @@ class ShareyourccLogin(LoginAutomation):
                 os.getenv('SHAREYOURCC_PASSWORD', ''),
             )
 
-    def _get_linuxdo_credentials(self) -> tuple[str, str]:
-        """获取 LinuxDO 凭据"""
-        try:
-            cfg = UnifiedConfigManager()
-            creds = cfg.get_credentials('linuxdo', fallback_env=True)
-            return creds.get('email', ''), creds.get('password', '')
-        except Exception:
-            return (
-                os.getenv('LINUXDO_EMAIL', ''),
-                os.getenv('LINUXDO_PASSWORD', ''),
-            )
+
 
     def do_login(self, page: Page, **credentials) -> bool:
-        """执行登录（优先邮箱密码，失败则尝试 LinuxDo OAuth）"""
+        """执行登录（根据 login_type 选择登录方式）
+        
+        支持的 login_type:
+        - 'linuxdo_oauth': 使用 LinuxDo OAuth 登录（默认）
+        - 'google_oauth': 使用 Google OAuth 登录
+        - 'github_oauth': 使用 GitHub OAuth 登录
+        """
         # 打开首页并等待加载
         logger.info("正在打开 ShareYourCC 首页...")
         page.goto('https://shareyour.cc/', timeout=60000)
         page.wait_for_load_state('domcontentloaded')
         page.wait_for_timeout(2000)
 
-        # 先尝试邮箱密码登录
-        email = credentials.get('email')
-        password = credentials.get('password')
-
-        if email and password:
-            logger.info("尝试使用邮箱密码登录...")
-            if self.login_with_credentials(page, email, password):
-                return True
-            logger.info("邮箱密码登录失败，尝试 LinuxDo OAuth")
-
-        # 尝试 LinuxDo OAuth 登录
-        return self.login_with_linuxdo_oauth(page)
+        login_type = credentials.get('login_type', 'linuxdo_oauth').lower()
+        
+        # LinuxDo OAuth 登录
+        if login_type == 'linuxdo_oauth':
+            logger.info("使用 LinuxDo OAuth 登录模式")
+            return self.login_with_linuxdo_oauth(page)
+        
+        # Google OAuth 登录
+        elif login_type == 'google_oauth':
+            logger.info("使用 Google OAuth 登录模式")
+            return self.login_with_google_oauth(page)
+        
+        # GitHub OAuth 登录
+        elif login_type == 'github_oauth':
+            logger.info("使用 GitHub OAuth 登录模式")
+            return self.login_with_github_oauth(page)
+        
+        # 未知类型，使用默认 LinuxDo OAuth
+        else:
+            logger.warning(f"未知的 login_type: {login_type}，使用默认的 LinuxDo OAuth")
+            return self.login_with_linuxdo_oauth(page)
 
     def after_login(self, page: Page, **_credentials) -> None:
         """登录后处理：关闭弹窗、签到、抽奖"""
@@ -794,12 +761,78 @@ class ShareyourccLogin(LoginAutomation):
             logger.error(f"抽奖操作失败: {exc}")
 
 
+    def run(
+        self,
+        *,
+        use_cookie: bool = True,
+        verify_url: Optional[str] = None,
+        cookie_expire_days: Optional[int] = None,
+        **credentials,
+    ) -> bool:
+        """执行完整的登录流程（支持元数据匹配）"""
+        login_success = False
+        self.logged_in_with_cookies = False
+
+        expire_days = self.cookie_expire_days if cookie_expire_days is None else cookie_expire_days
+        login_type = credentials.get('login_type', '')
+        email = credentials.get('email', '')
+        password = credentials.get('password', '')
+
+        try:
+            self.browser = self.browser_manager.launch(headless=self.headless, **self.browser_kwargs)
+            self.context = self.browser.new_context(**self.context_kwargs)
+            self.page = self.context.new_page()
+
+            # 尝试 Cookie 登录（带元数据匹配）
+            if use_cookie and self.try_cookie_login(
+                self.page, 
+                verify_url=verify_url, 
+                expire_days=expire_days,
+                login_type=login_type,
+                email=email
+            ):
+                login_success = True
+                self.logged_in_with_cookies = True
+            else:
+                # Cookie 不匹配或失效，执行正常登录
+                login_success = self.do_login(self.page, **credentials)
+                self.logged_in_with_cookies = False
+                
+                # 登录成功后保存 Cookie（带元数据）
+                if login_success and use_cookie:
+                    metadata = {'login_type': login_type} if login_type else {}
+                    if email and login_type == 'credentials':
+                        metadata['email'] = email
+                    self.cookie_manager.save_cookies(self.context, self.site_name, metadata=metadata)
+                    logger.info(f"Cookie 已保存（元数据: {metadata}）")
+
+            if login_success:
+                self.after_login(self.page, **credentials)
+
+            return login_success
+        except Exception:
+            self.browser_manager.save_error_screenshot(self.page, self._error_screenshot_path())
+            raise
+        finally:
+            try:
+                if self.context is not None:
+                    self.context.close()
+            except Exception:
+                pass
+
+            self.browser_manager.close(self.browser)
+            self.browser = None
+            self.context = None
+            self.page = None
+
+
 def login_to_shareyourcc(
     *,
     email: Optional[str] = None,
     password: Optional[str] = None,
     use_cookie: bool = True,
     headless: bool = False,
+    login_type: Optional[str] = None,
 ) -> bool:
     """ShareYourCC 登录入口函数"""
     # 如果未提供凭据，尝试从统一配置中获取（带环境变量回退）
@@ -809,6 +842,7 @@ def login_to_shareyourcc(
             creds = config_mgr.get_credentials('shareyourcc', fallback_env=True)
             email = email or creds.get('email', '')
             password = password or creds.get('password', '')
+            login_type = login_type or creds.get('login_type', '')
         except Exception:
             pass
 
@@ -819,6 +853,7 @@ def login_to_shareyourcc(
             verify_url='https://shareyour.cc/',
             email=email,
             password=password,
+            login_type=login_type,
         )
     except Exception as exc:
         logger.error(f"发生异常: {exc}")
@@ -836,22 +871,38 @@ if __name__ == "__main__":
         _creds = cfg.get_credentials('shareyourcc', fallback_env=True)
         EMAIL = _creds.get('email', '')
         PASSWORD = _creds.get('password', '')
+        LOGIN_TYPE = _creds.get('login_type', '')
     except Exception:
         import os
         EMAIL = os.getenv('SHAREYOURCC_EMAIL', '')
         PASSWORD = os.getenv('SHAREYOURCC_PASSWORD', '')
+        LOGIN_TYPE = os.getenv('SHAREYOURCC_LOGIN_TYPE', '')
 
     USE_COOKIE = True   # 是否优先使用 cookie 登录
     HEADLESS = False    # 是否无头模式运行
 
-    if not EMAIL or not PASSWORD:
-        logger.warning("未在配置或环境变量中找到 ShareYourCC 凭据")
-        logger.warning("将尝试使用 LinuxDo OAuth 登录（需要 LinuxDo 凭据）")
-        logger.info("可设置: export SHAREYOURCC_EMAIL='your_email' SHAREYOURCC_PASSWORD='your_password'")
+    # 根据 login_type 决定提示信息
+    if LOGIN_TYPE == 'linuxdo_oauth':
+        logger.info("使用 LinuxDo OAuth 登录模式")
+    elif LOGIN_TYPE == 'google_oauth':
+        logger.info("使用 Google OAuth 登录模式")
+    elif LOGIN_TYPE == 'github_oauth':
+        logger.info("使用 GitHub OAuth 登录模式")
+    else:
+        logger.warning(f"未知的 login_type: {LOGIN_TYPE}，使用默认的 LinuxDo OAuth")
+        LOGIN_TYPE = 'linuxdo_oauth'
 
-    login_to_shareyourcc(
+    # 创建 automation 实例并运行（Cookie 会自动匹配元数据）
+    automation = ShareyourccLogin(headless=HEADLESS)
+    success = automation.run(
+        use_cookie=USE_COOKIE,  # 启用 Cookie，会自动匹配 login_type 和 email
+        verify_url='https://shareyour.cc/',
         email=EMAIL,
         password=PASSWORD,
-        use_cookie=USE_COOKIE,
-        headless=HEADLESS,
+        login_type=LOGIN_TYPE,
     )
+    
+    if not success:
+        logger.error("登录失败")
+        import sys
+        sys.exit(1)

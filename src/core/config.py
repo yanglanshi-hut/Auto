@@ -155,10 +155,14 @@ def _env_credentials(site: str) -> Dict:
     """根据站点从环境变量获取凭据。
 
     各站点对应关系：
-    - openi:     OPENI_USERNAME, OPENI_PASSWORD -> {"username", "password"}
-    - linuxdo:   LINUXDO_EMAIL,  LINUXDO_PASSWORD -> {"email", "password"}
-    - anyrouter: ANYROUTER_EMAIL, ANYROUTER_PASSWORD，若未设置则回退到
-                 LINUXDO_EMAIL, LINUXDO_PASSWORD -> {"email", "password"}
+    - openi:       OPENI_USERNAME, OPENI_PASSWORD -> {"username", "password"}
+    - linuxdo:     LINUXDO_EMAIL,  LINUXDO_PASSWORD -> {"email", "password"}
+    - anyrouter:   ANYROUTER_EMAIL, ANYROUTER_PASSWORD, ANYROUTER_LOGIN_TYPE
+                   -> {"email", "password", "login_type"}
+                   login_type: credentials | github_oauth | linuxdo_oauth
+    - shareyourcc: SHAREYOURCC_EMAIL, SHAREYOURCC_PASSWORD, SHAREYOURCC_LOGIN_TYPE
+                   -> {"email", "password", "login_type"}
+                   login_type: credentials | linuxdo_oauth
     """
     key = _normalize_site(site)
 
@@ -175,12 +179,27 @@ def _env_credentials(site: str) -> Dict:
     if key == "anyrouter":
         e = os.getenv("ANYROUTER_EMAIL", "").strip()
         p = os.getenv("ANYROUTER_PASSWORD", "").strip()
+        login_type = os.getenv("ANYROUTER_LOGIN_TYPE", "linuxdo_oauth").strip()
+        
+        result = {"login_type": login_type}
         if e and p:
-            return {"email": e, "password": p}
-        # 向后兼容：当前 AnyRouter 通过 LinuxDO OAuth 认证
-        e = os.getenv("LINUXDO_EMAIL", "").strip()
-        p = os.getenv("LINUXDO_PASSWORD", "").strip()
-        return {"email": e, "password": p} if e and p else {}
+            result.update({"email": e, "password": p})
+        
+        # 向后兼容：login_type 为 OAuth 时，回退到 LinuxDO 凭据
+        if login_type in ("linuxdo_oauth", "github_oauth") and not (e and p):
+            return result if result.get("login_type") else {}
+        
+        return result if (login_type in ("linuxdo_oauth", "github_oauth") or (e and p)) else {}
+
+    if key == "shareyourcc":
+        e = os.getenv("SHAREYOURCC_EMAIL", "").strip()
+        p = os.getenv("SHAREYOURCC_PASSWORD", "").strip()
+        login_type = os.getenv("SHAREYOURCC_LOGIN_TYPE", "credentials").strip()
+        
+        result = {"login_type": login_type}
+        if e and p:
+            result.update({"email": e, "password": p})
+        return result if (login_type == "linuxdo_oauth" or (e and p)) else {}
 
     return {}
 

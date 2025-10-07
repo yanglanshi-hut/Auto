@@ -1,0 +1,145 @@
+"""ShareYourCC OAuth 通用辅助方法"""
+
+from typing import Optional
+from playwright.sync_api import Page
+from src.core.logger import setup_logger
+from src.core.paths import get_project_paths
+
+logger = setup_logger("shareyourcc_oauth", get_project_paths().logs / "shareyourcc.log")
+
+
+def click_oauth_button(page: Page, provider: str) -> Optional[Page]:
+    """通用 OAuth 按钮点击方法
+    
+    Args:
+        page: Playwright 页面对象
+        provider: OAuth 提供商 ('linuxdo', 'google', 'github')
+    
+    Returns:
+        OAuth 授权页面（可能是新窗口或当前页面）
+    """
+    provider_names = {
+        'linuxdo': ['LINUX DO', 'LinuxDo', '使用 LINUX DO 登录'],
+        'google': ['GOOGLE', 'Google', '使用 GOOGLE 登录', '使用 Google 登录'],
+        'github': ['GITHUB', 'GitHub', '使用 GITHUB 登录', '使用 GitHub 登录'],
+    }
+    
+    names = provider_names.get(provider.lower(), [])
+    if not names:
+        logger.error(f"不支持的 OAuth 提供商: {provider}")
+        return None
+    
+    logger.info(f"点击 {provider} OAuth 按钮...")
+    
+    # 构建选择器
+    oauth_selectors = []
+    for name in names:
+        oauth_selectors.extend([
+            f'button:has-text("{name}")',
+            f'dialog button:has-text("{name}")',
+        ])
+    
+    # 尝试点击并捕获新窗口
+    for selector in oauth_selectors:
+        try:
+            button = page.locator(selector).first
+            if button.count() > 0:
+                logger.info(f"找到 {provider} OAuth 按钮: {selector}")
+                
+                # 尝试捕获新窗口
+                try:
+                    with page.expect_popup(timeout=3000) as popup_info:
+                        button.click(timeout=5000)
+                    
+                    auth_page = popup_info.value
+                    auth_page.wait_for_load_state('domcontentloaded')
+                    logger.info(f"{provider} OAuth 在新窗口打开: {auth_page.url}")
+                    return auth_page
+                except Exception:
+                    # 没有新窗口，检查是否在当前页面跳转
+                    page.wait_for_timeout(2000)
+                    page.wait_for_load_state('domcontentloaded')
+                    
+                    if '/oauth' in page.url or '/auth' in page.url:
+                        logger.info(f"{provider} OAuth 在当前页面打开: {page.url}")
+                        return page
+        except Exception as exc:
+            logger.debug(f"尝试选择器 {selector} 失败: {exc}")
+            continue
+    
+    logger.warning(f"未找到 {provider} OAuth 按钮")
+    return None
+
+
+def confirm_google_oauth_consent(auth_page: Page) -> bool:
+    """确认 Google OAuth 授权"""
+    if 'google.com' not in auth_page.url and 'accounts.google.com' not in auth_page.url:
+        logger.info("已跳转，跳过 Google 授权确认")
+        return True
+    
+    # Google 通常会自动处理已授权的应用
+    # 如果需要选择账号或确认权限，这里可以添加逻辑
+    logger.info("Google OAuth 页面，等待自动处理...")
+    auth_page.wait_for_timeout(3000)
+    return True
+
+
+def confirm_github_oauth_consent(auth_page: Page) -> bool:
+    """确认 GitHub OAuth 授权"""
+    if 'github.com' not in auth_page.url:
+        logger.info("已跳转，跳过 GitHub 授权确认")
+        return True
+    
+    # 检查是否需要授权（首次授权或权限更新）
+    authorize_selectors = [
+        'button[type="submit"]:has-text("Authorize")',
+        'button:has-text("Authorize")',
+        'input[type="submit"][value*="Authorize"]',
+    ]
+    
+    for selector in authorize_selectors:
+        try:
+            auth_page.locator(selector).first.click(timeout=5000)
+            logger.info("已点击 GitHub 授权")
+            auth_page.wait_for_timeout(2000)
+            return True
+        except Exception:
+            continue
+    
+    logger.info("GitHub 无需授权或已自动跳转")
+    return True
+
+
+def confirm_linuxdo_oauth_consent(auth_page: Page) -> bool:
+    """确认 LinuxDO OAuth 授权"""
+    if 'linux.do' not in auth_page.url:
+        logger.info("已跳转，跳过 LinuxDO 授权确认")
+        return True
+    
+    # 勾选"记住授权"
+    remember_checkbox = auth_page.locator('role=checkbox[name="记住这次授权"]')
+    if remember_checkbox.count() > 0:
+        try:
+            remember_checkbox.first.check(timeout=300)
+            logger.info("已勾选记住授权")
+        except Exception:
+            pass
+    
+    # 点击"允许"
+    allow_buttons = (
+        'role=link[name="允许"]',
+        'role=button[name="允许"]',
+        'text=允许',
+    )
+    
+    for selector in allow_buttons:
+        try:
+            auth_page.locator(selector).first.click(timeout=5000)
+            logger.info("已点击允许授权")
+            auth_page.wait_for_timeout(2000)
+            return True
+        except Exception:
+            continue
+    
+    logger.warning("未找到允许按钮，可能已自动跳转")
+    return True
