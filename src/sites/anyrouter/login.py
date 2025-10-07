@@ -216,8 +216,14 @@ class AnyrouterLogin(LoginAutomation):
         """打开 GitHub OAuth 授权窗口"""
         page.goto('https://anyrouter.top/login', timeout=60000)
         page.wait_for_load_state('domcontentloaded')
+        logger.info("已导航到 AnyRouter 登录页")
+        
+        # 关闭弹窗（内部会刷新页面如果有弹窗）
         self._close_popup_if_exists(page)
-        page.wait_for_timeout(300)
+        
+        # 等待页面稳定
+        page.wait_for_timeout(1000)
+        logger.info("开始查找 GitHub OAuth 按钮...")
         
         oauth_buttons = (
             'button:has-text("使用 GitHub 继续")',
@@ -230,16 +236,46 @@ class AnyrouterLogin(LoginAutomation):
         
         for selector in oauth_buttons:
             try:
-                with page.expect_popup(timeout=3000) as popup_info:
-                    page.locator(selector).first.click(timeout=5000)
-                auth_page = popup_info.value
-                auth_page.wait_for_load_state('domcontentloaded')
-                logger.info(f"GitHub OAuth 窗口已打开: {auth_page.url}")
-                return auth_page
+                logger.debug(f"尝试选择器: {selector}")
+                buttons = page.locator(selector)
+                count = buttons.count()
+                if count > 0:
+                    logger.info(f"找到 {count} 个匹配的按钮: {selector}")
+                    with page.expect_popup(timeout=3000) as popup_info:
+                        buttons.first.click(timeout=5000)
+                    auth_page = popup_info.value
+                    auth_page.wait_for_load_state('domcontentloaded')
+                    logger.info(f"GitHub OAuth 窗口已打开: {auth_page.url}")
+                    return auth_page
+            except Exception as e:
+                logger.debug(f"选择器 {selector} 失败: {e}")
+                continue
+        
+        # 第一次未找到按钮，尝试刷新页面（与 LinuxDO 保持一致）
+        logger.info("未找到 GitHub OAuth 按钮，尝试刷新页面...")
+        page.reload(wait_until='domcontentloaded')
+        page.wait_for_timeout(300)
+        self._close_popup_if_exists(page)
+        page.wait_for_timeout(300)
+        
+        # 再次尝试查找并点击按钮
+        for selector in oauth_buttons:
+            try:
+                buttons = page.locator(selector)
+                count = buttons.count()
+                if count > 0:
+                    logger.info(f"找到 {count} 个匹配的按钮: {selector}")
+                    with page.expect_popup(timeout=3000) as popup_info:
+                        buttons.first.click(timeout=5000)
+                    auth_page = popup_info.value
+                    auth_page.wait_for_load_state('domcontentloaded')
+                    logger.info(f"GitHub OAuth 窗口已打开: {auth_page.url}")
+                    return auth_page
             except Exception:
                 continue
         
-        logger.warning("未找到 GitHub OAuth 按钮")
+        logger.warning("刷新后仍未找到可用的 GitHub OAuth 按钮")
+        logger.info(f"当前页面 URL: {page.url}")
         return None
 
     def _open_linuxdo_oauth_window(self, page: Page) -> Optional[Page]:
