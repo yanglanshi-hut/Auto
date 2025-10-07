@@ -5,6 +5,7 @@
   python -m src anyrouter           # 登录 anyrouter
   python -m src linuxdo             # 登录 linuxdo
   python -m src shareyourcc         # 登录 shareyourcc
+  python -m src github              # 登录 github
   python -m src openi               # 根据配置登录所有 OpenI 用户
   python -m src openi --user yls    # 登录指定的 OpenI 用户
   python -m src --help              # 显示帮助
@@ -92,6 +93,15 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common_options(sp_sycc)
     sp_sycc.set_defaults(handler=_handle_shareyourcc)
 
+    # github 子命令
+    sp_gh = subparsers.add_parser(
+        "github",
+        help="Login to GitHub",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    _add_common_options(sp_gh)
+    sp_gh.set_defaults(handler=_handle_github)
+
     return parser
 
 
@@ -149,6 +159,25 @@ def _handle_shareyourcc(args: argparse.Namespace) -> int:
         return int(e.code) if e.code is not None else 1
     except Exception as exc:
         print(f"shareyourcc login failed: {exc}")
+        ok = False
+    return 0 if ok else 1
+
+
+def _handle_github(args: argparse.Namespace) -> int:
+    try:
+        from src.sites.github.login import login_to_github
+    except Exception as exc:
+        print(f"Failed to import github login module: {exc}")
+        return 2
+
+    use_cookie = not args.no_cookie
+    ok = False
+    try:
+        ok = login_to_github(use_cookie=use_cookie, headless=args.headless)
+    except SystemExit as e:
+        return int(e.code) if e.code is not None else 1
+    except Exception as exc:
+        print(f"github login failed: {exc}")
         ok = False
     return 0 if ok else 1
 
