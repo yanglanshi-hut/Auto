@@ -216,25 +216,17 @@ class ShareyourccLogin(LoginAutomation):
             return False
 
     def login_with_google_oauth(self, page: Page) -> bool:
-        """Google OAuth 登录流程"""
+        """Google OAuth 登录流程（简化版）"""
         logger.info("开始 Google OAuth 登录")
         
         try:
-            # 先检查是否已经登录
-            page.goto('https://shareyour.cc/', timeout=60000)
-            page.wait_for_load_state('domcontentloaded')
-            page.wait_for_timeout(2000)
-            
-            if self.verify_login(page):
-                logger.info("ShareYourCC 已登录，无需重新登录")
-                return True
-            
-            # 阶段 0: 确保 Google 已登录
+            # 阶段 1: 确保 Google 已登录（注入 Google Cookie）
             if not self._ensure_google_logged_in(page):
                 logger.error("无法确保 Google 登录状态")
                 return False
             
-            # 返回 ShareYourCC 首页
+            # 阶段 2: 访问 ShareYourCC 首页并导航到登录页面
+            logger.info("访问 ShareYourCC 首页...")
             page.goto('https://shareyour.cc/', timeout=60000)
             page.wait_for_load_state('domcontentloaded')
             page.wait_for_timeout(2000)
@@ -269,25 +261,17 @@ class ShareyourccLogin(LoginAutomation):
             return False
     
     def login_with_github_oauth(self, page: Page) -> bool:
-        """GitHub OAuth 登录流程"""
+        """GitHub OAuth 登录流程（简化版）"""
         logger.info("开始 GitHub OAuth 登录")
         
         try:
-            # 先检查是否已经登录
-            page.goto('https://shareyour.cc/', timeout=60000)
-            page.wait_for_load_state('domcontentloaded')
-            page.wait_for_timeout(2000)
-            
-            if self.verify_login(page):
-                logger.info("ShareYourCC 已登录，无需重新登录")
-                return True
-            
-            # 阶段 0: 确保 GitHub 已登录
+            # 阶段 1: 确保 GitHub 已登录（注入 GitHub Cookie）
             if not self._ensure_github_logged_in(page):
                 logger.error("无法确保 GitHub 登录状态")
                 return False
             
-            # 返回 ShareYourCC 首页
+            # 阶段 2: 访问 ShareYourCC 首页并导航到登录页面
+            logger.info("访问 ShareYourCC 首页...")
             page.goto('https://shareyour.cc/', timeout=60000)
             page.wait_for_load_state('domcontentloaded')
             page.wait_for_timeout(2000)
@@ -330,25 +314,17 @@ class ShareyourccLogin(LoginAutomation):
             return False
 
     def login_with_linuxdo_oauth(self, page: Page) -> bool:
-        """使用 LinuxDo OAuth 登录"""
+        """LinuxDo OAuth 登录流程（简化版）"""
         logger.info("开始 LinuxDo OAuth 登录")
 
         try:
-            # 先检查是否已经登录
-            page.goto('https://shareyour.cc/', timeout=60000)
-            page.wait_for_load_state('domcontentloaded')
-            page.wait_for_timeout(2000)
-            
-            if self.verify_login(page):
-                logger.info("ShareYourCC 已登录，无需重新登录")
-                return True
-            
-            # 阶段 0: 确保 LinuxDO 已登录
+            # 阶段 1: 确保 LinuxDO 已登录（注入 LinuxDo Cookie）
             if not self._ensure_linuxdo_logged_in(page):
                 logger.error("无法确保 LinuxDO 登录状态")
                 return False
 
-            # 返回 ShareYourCC 首页
+            # 阶段 2: 访问 ShareYourCC 首页并导航到登录页面
+            logger.info("访问 ShareYourCC 首页...")
             page.goto('https://shareyour.cc/', timeout=60000)
             page.wait_for_load_state('domcontentloaded')
             page.wait_for_timeout(2000)
@@ -901,7 +877,15 @@ class ShareyourccLogin(LoginAutomation):
         cookie_expire_days: Optional[int] = None,
         **credentials,
     ) -> bool:
-        """执行完整的登录流程（支持元数据匹配）"""
+        """执行完整的登录流程（重构版）
+        
+        登录流程：
+        1. 进入 https://shareyour.cc/ 判定是否已经登录
+        2. 没有登录就先判定当前是否存在 Cookie
+        3. 如果没有 Cookie 就调用三种认证方式进行登录
+        4. LinuxDo 认证需要点击确认，GitHub/Google 认证直接自动跳转
+        5. 认证完成后进行签到和抽奖功能
+        """
         login_success = False
         self.logged_in_with_cookies = False
 
@@ -915,30 +899,58 @@ class ShareyourccLogin(LoginAutomation):
             self.context = self.browser.new_context(**self.context_kwargs)
             self.page = self.context.new_page()
 
-            # 尝试 Cookie 登录（带元数据匹配）
-            if use_cookie and self.try_cookie_login(
-                self.page, 
-                verify_url=verify_url, 
-                expire_days=expire_days,
-                login_type=login_type,
-                email=email
-            ):
+            # 步骤 1: 进入首页，检查是否已经登录
+            logger.info("步骤 1: 访问 ShareYourCC 首页，检查登录状态...")
+            self.page.goto('https://shareyour.cc/', timeout=60000)
+            self.page.wait_for_load_state('domcontentloaded')
+            self.page.wait_for_timeout(2000)
+            
+            if self.verify_login(self.page):
+                logger.info("✅ 已经登录，无需重新登录")
                 login_success = True
-                self.logged_in_with_cookies = True
-            else:
-                # Cookie 不匹配或失效，执行正常登录
-                login_success = self.do_login(self.page, **credentials)
                 self.logged_in_with_cookies = False
+            else:
+                logger.info("未登录，继续登录流程...")
                 
-                # 登录成功后保存 Cookie（带元数据）
-                if login_success and use_cookie:
-                    metadata = {'login_type': login_type} if login_type else {}
-                    if email and login_type == 'credentials':
-                        metadata['email'] = email
-                    self.cookie_manager.save_cookies(self.context, self.site_name, metadata=metadata)
-                    logger.info(f"Cookie 已保存（元数据: {metadata}）")
+                # 步骤 2: 尝试使用 Cookie 登录
+                if use_cookie:
+                    logger.info("步骤 2: 尝试加载 ShareYourCC Cookie...")
+                    # 加载 Cookie（带元数据匹配）
+                    required_metadata = {'login_type': login_type} if login_type else None
+                    if self.cookie_manager.load_cookies(
+                        self.page.context, 
+                        self.site_name, 
+                        expire_days,
+                        required_metadata=required_metadata
+                    ):
+                        logger.info("Cookie 加载成功，刷新页面验证...")
+                        self.page.reload(wait_until='domcontentloaded')
+                        self.page.wait_for_timeout(2000)
+                        
+                        if self.verify_login(self.page):
+                            logger.info("✅ Cookie 登录成功")
+                            login_success = True
+                            self.logged_in_with_cookies = True
+                        else:
+                            logger.info("Cookie 已失效，需要重新登录")
+                    else:
+                        logger.info("未找到有效的 Cookie")
+                
+                # 步骤 3: 执行 OAuth 登录
+                if not login_success:
+                    logger.info(f"步骤 3: 执行 {login_type} OAuth 登录...")
+                    login_success = self.do_login(self.page, **credentials)
+                    self.logged_in_with_cookies = False
+                    
+                    # 登录成功后保存 Cookie（带元数据）
+                    if login_success and use_cookie:
+                        metadata = {'login_type': login_type} if login_type else {}
+                        self.cookie_manager.save_cookies(self.context, self.site_name, metadata=metadata)
+                        logger.info(f"✅ Cookie 已保存（元数据: {metadata}）")
 
+            # 步骤 4&5: 登录成功后执行签到和抽奖
             if login_success:
+                logger.info("步骤 4&5: 执行登录后操作（签到、抽奖）...")
                 self.after_login(self.page, **credentials)
 
             return login_success
