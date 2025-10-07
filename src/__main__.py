@@ -147,7 +147,7 @@ def _handle_anyrouter(args: argparse.Namespace) -> int:
                 automation = AnyrouterLogin(headless=args.headless, login_type=login_type)
                 ok = automation.run(
                     use_cookie=use_cookie,
-                    verify_url='https://anyrouter.cc/',
+                    verify_url='https://anyrouter.top/',
                     **user_config
                 )
                 
