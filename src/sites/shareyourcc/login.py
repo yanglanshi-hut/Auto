@@ -198,6 +198,15 @@ class ShareyourccLogin(LoginAutomation):
         logger.info("开始 Google OAuth 登录")
         
         try:
+            # 先检查是否已经登录
+            page.goto('https://shareyour.cc/', timeout=60000)
+            page.wait_for_load_state('domcontentloaded')
+            page.wait_for_timeout(2000)
+            
+            if self.verify_login(page):
+                logger.info("ShareYourCC 已登录，无需重新登录")
+                return True
+            
             # 阶段 0: 确保 Google 已登录
             if not self._ensure_google_logged_in(page):
                 logger.error("无法确保 Google 登录状态")
@@ -237,6 +246,15 @@ class ShareyourccLogin(LoginAutomation):
         logger.info("开始 GitHub OAuth 登录")
         
         try:
+            # 先检查是否已经登录
+            page.goto('https://shareyour.cc/', timeout=60000)
+            page.wait_for_load_state('domcontentloaded')
+            page.wait_for_timeout(2000)
+            
+            if self.verify_login(page):
+                logger.info("ShareYourCC 已登录，无需重新登录")
+                return True
+            
             # 阶段 0: 确保 GitHub 已登录
             if not self._ensure_github_logged_in(page):
                 logger.error("无法确保 GitHub 登录状态")
@@ -276,6 +294,15 @@ class ShareyourccLogin(LoginAutomation):
         logger.info("开始 LinuxDo OAuth 登录")
 
         try:
+            # 先检查是否已经登录
+            page.goto('https://shareyour.cc/', timeout=60000)
+            page.wait_for_load_state('domcontentloaded')
+            page.wait_for_timeout(2000)
+            
+            if self.verify_login(page):
+                logger.info("ShareYourCC 已登录，无需重新登录")
+                return True
+            
             # 阶段 0: 确保 LinuxDO 已登录
             if not self._ensure_linuxdo_logged_in(page):
                 logger.error("无法确保 LinuxDO 登录状态")
