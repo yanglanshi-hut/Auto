@@ -72,46 +72,61 @@ python anyrouter_login.py
 ## 工作流程
 
 1. **Cookie 登录（如果可用）**
-   - 加载保存的 Cookie
+   - 加载保存的 AnyRouter Cookie
    - 直接访问控制台页面
    - 验证登录状态
 
 2. **OAuth 登录（Cookie 失效或首次登录）**
+   
+   **阶段 0: 确保 LinuxDO 已登录**
+   - 尝试加载 LinuxDO Cookie（如果存在）
+   - 验证 LinuxDO Cookie 是否有效
+   - 如果 Cookie 无效或不存在，调用 LinuxDO 登录流程
+   - 保存 LinuxDO Cookie 供下次使用
+   
+   **阶段 1: 打开 OAuth 窗口**
    - 访问 AnyRouter 登录页面
-   - 关闭系统公告弹窗
-   - 点击"使用 LinuxDO 继续"
-   - 等待 LinuxDO 授权页面打开
-   - 自动点击"允许"按钮
-   - 完成授权并跳转回 AnyRouter
-   - 保存新的 Cookie
+   - 关闭系统公告弹窗（支持中英文）
+   - 点击"使用 LinuxDO 继续"按钮
+   - 如果找不到按钮，自动刷新页面重试
+   
+   **阶段 2: OAuth 授权**
+   - OAuth 窗口打开时，LinuxDO 已处于登录状态
+   - 自动点击"允许"按钮并勾选"记住授权"
+   - 等待跳转回 AnyRouter
+   
+   **阶段 3: 验证与保存**
+   - 验证登录成功
+   - 保存 AnyRouter Cookie
 
 3. **登录后操作**
    - 自动跳转到 API 令牌页面
    - 显示已有令牌数量
    - 保持浏览器打开便于查看
 
+## 技术亮点
+
+### 智能 Cookie 复用
+- **自动检测 LinuxDO Cookie**：优先使用已保存的 LinuxDO Cookie
+- **无缝回退**：Cookie 无效时自动调用完整登录流程
+- **双重缓存**：同时保存 LinuxDO 和 AnyRouter 的 Cookie
+
+### 模块化设计
+- **复用 LinuxDO 登录**：直接调用 `LinuxdoLogin` 类，避免重复代码
+- **职责分离**：OAuth 流程、LinuxDO 登录、Cookie 管理完全解耦
+
+### 容错能力
+- **页面刷新重试**：找不到 OAuth 按钮时自动刷新
+- **多选择器支持**：支持中英文弹窗关闭按钮
+- **详细日志**：每个步骤都有清晰的日志记录
+
 ## 注意事项
 
-1. **LinuxDO 登录状态**：本脚本依赖 LinuxDO 的登录状态，请确保 LinuxDO 账号处于登录状态
-2. **安全提示**：请妥善保管 `anyrouter_cookies.json` 文件，不要泄露给他人
-3. **Git 提交**：建议将 `anyrouter_cookies.json` 添加到 `.gitignore` 避免提交敏感信息
-4. **Cookie 有效期**：Cookie 会在一定时间后过期，过期后会自动重新登录
-
-## 与 LinuxDO 脚本配合使用
-
-推荐先运行 LinuxDO 登录脚本确保 LinuxDO 处于登录状态：
-
-```bash
-# 1. 先登录 LinuxDO
-cd ../linuxdo
-python linuxdo_login.py
-
-# 2. 再登录 AnyRouter
-cd ../anyrouter
-python anyrouter_login.py
-```
-
-这样可以确保 OAuth 授权流程顺利完成。
+1. **自动处理 LinuxDO 登录**：无需手动登录 LinuxDO，脚本会自动处理
+2. **配置凭据**：确保在 `config/users.json` 中配置了 `anyrouter` 站点的凭据
+3. **安全提示**：请妥善保管 Cookie 文件，不要泄露给他人
+4. **Git 提交**：Cookie 文件已添加到 `.gitignore`，不会被提交
+5. **Cookie 有效期**：Cookie 会在一定时间后过期，过期后会自动重新登录
 
 ## 故障排除
 

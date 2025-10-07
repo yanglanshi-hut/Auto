@@ -218,7 +218,16 @@ class NewSiteLogin(LoginAutomation):
 - **凭据配置**:
   1. 优先：`config/users.json` - `users` 数组（`site: "anyrouter"`）
   2. 回退：环境变量 `ANYROUTER_EMAIL` / `ANYROUTER_PASSWORD` 或 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
-- **特性**: 自动处理授权弹窗、记住授权、导航到 API 令牌页
+- **特性**: 
+  - 智能复用 LinuxDO 登录状态和 Cookie
+  - 自动处理 OAuth 授权流程（授权弹窗、记住授权）
+  - 支持中英文界面弹窗关闭
+  - 页面刷新重试机制
+  - 自动导航到 API 令牌页面
+- **技术亮点**:
+  - 在 OAuth 流程前自动确保 LinuxDO 已登录
+  - 复用 `LinuxdoLogin` 类，避免重复代码
+  - 双重 Cookie 缓存（LinuxDO + AnyRouter）
 
 ### OpenI
 - **登录方式**: 账号密码登录
