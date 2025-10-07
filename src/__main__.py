@@ -106,22 +106,73 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _handle_anyrouter(args: argparse.Namespace) -> int:
+    """处理 AnyRouter 登录（支持多用户配置）"""
     try:
-        from src.sites.anyrouter.login import login_to_anyrouter
-    except Exception as exc:  # pragma: no cover - 导入错误路径
+        from src.sites.anyrouter.login import AnyrouterLogin
+        from src.core.config import UnifiedConfigManager
+    except Exception as exc:
         print(f"Failed to import anyrouter login module: {exc}")
         return 2
 
     use_cookie = not args.no_cookie
-    ok = False
+    
     try:
-        ok = login_to_anyrouter(use_cookie=use_cookie, headless=args.headless)
-    except SystemExit as e:  # 允许底层脚本有意退出
-        return int(e.code) if e.code is not None else 1
+        # 获取所有 AnyRouter 用户配置
+        config_mgr = UnifiedConfigManager()
+        all_users = config_mgr.get_all_users('anyrouter')
+        
+        # 如果没有配置文件中的用户，尝试从环境变量获取
+        if not all_users:
+            env_creds = config_mgr.get_credentials('anyrouter', fallback_env=True)
+            if env_creds:
+                all_users = [env_creds]
+            else:
+                print("未找到 AnyRouter 用户配置")
+                print("请在 config/users.json 中添加 AnyRouter 配置")
+                return 1
+        
+        print(f"找到 {len(all_users)} 个 AnyRouter 用户配置")
+        
+        # 循环处理每个用户
+        failed_count = 0
+        for idx, user_config in enumerate(all_users, 1):
+            login_type = user_config.get('login_type', 'linuxdo_oauth')
+            email = user_config.get('email', 'N/A')
+            print(f"\n{'='*60}")
+            print(f"[{idx}/{len(all_users)}] 处理 AnyRouter 用户 (login_type: {login_type}, email: {email})")
+            print(f"{'='*60}")
+            
+            try:
+                # 创建实例时传递 login_type，以区分不同用户的 Cookie
+                automation = AnyrouterLogin(headless=args.headless, login_type=login_type)
+                ok = automation.run(
+                    use_cookie=use_cookie,
+                    verify_url='https://anyrouter.cc/',
+                    **user_config
+                )
+                
+                if ok:
+                    print(f"✅ 用户 {idx} 登录成功 (login_type: {login_type})")
+                else:
+                    print(f"❌ 用户 {idx} 登录失败 (login_type: {login_type})")
+                    failed_count += 1
+                    
+            except SystemExit as e:
+                print(f"❌ 用户 {idx} 登录异常退出 (login_type: {login_type})")
+                failed_count += 1
+            except Exception as exc:
+                print(f"❌ 用户 {idx} 登录失败: {exc}")
+                failed_count += 1
+        
+        print(f"\n{'='*60}")
+        print(f"完成！成功: {len(all_users) - failed_count}/{len(all_users)}, 失败: {failed_count}")
+        print(f"{'='*60}\n")
+        
+        return 0 if failed_count == 0 else 1
+        
     except Exception as exc:
-        print(f"anyrouter login failed: {exc}")
-        ok = False
-    return 0 if ok else 1
+        print(f"anyrouter multi-user login failed: {exc}")
+        return 1
 
 
 def _handle_linuxdo(args: argparse.Namespace) -> int:

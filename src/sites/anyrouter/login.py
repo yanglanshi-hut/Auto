@@ -16,8 +16,18 @@ logger = setup_logger("anyrouter", get_project_paths().logs / "anyrouter.log")
 
 
 class AnyrouterLogin(LoginAutomation):
-    def __init__(self, *, headless: bool = False) -> None:
-        super().__init__('anyrouter', headless=headless)
+    """AnyRouter 登录自动化类（支持多用户）"""
+    
+    def __init__(self, *, headless: bool = False, login_type: Optional[str] = None) -> None:
+        # 根据 login_type 设置不同的 site_name，以区分不同登录方式的 Cookie
+        # 例如：anyrouter_credentials, anyrouter_github_oauth, anyrouter_linuxdo_oauth
+        if login_type:
+            site_name = f'anyrouter_{login_type}'
+        else:
+            site_name = 'anyrouter'
+        
+        super().__init__(site_name, headless=headless)
+        self.login_type = login_type
 
     def try_cookie_login(
         self,

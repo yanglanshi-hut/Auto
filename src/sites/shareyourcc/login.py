@@ -546,20 +546,33 @@ class ShareyourccLogin(LoginAutomation):
         logger.info("等待 OAuth 回调完成...")
         
         # 等待OAuth回调完成（跳转回 ShareYourCC）
-        max_wait = 30  # 最多等待30秒
-        for _ in range(max_wait):
+        max_wait = 60  # 增加到 60 秒，给 Cloudflare 验证留足时间
+        for i in range(max_wait):
             current_url = page.url
+            
+            # 检测 Cloudflare 验证页面
+            if 'linux.do' in current_url or 'connect.linux.do' in current_url:
+                # 检查是否有 Cloudflare 验证元素
+                try:
+                    if page.locator('text=/确认您是真人|Cloudflare|人机验证/i').count() > 0:
+                        if i % 5 == 0:  # 每 5 秒提示一次
+                            logger.info(f"等待 Cloudflare 人机验证完成... ({i}秒)")
+                        page.wait_for_timeout(1000)
+                        continue
+                except Exception:
+                    pass
+                
+                # 没有验证元素，正常等待跳转
+                if i % 5 == 0:
+                    logger.info(f"等待 LinuxDo OAuth 授权完成... ({i}秒)")
+                page.wait_for_timeout(1000)
+                continue
             
             # 如果已经回到 ShareYourCC 域名
             if 'shareyour.cc' in current_url:
-                logger.info(f"已回到 ShareYourCC: {current_url}")
+                logger.info(f"✅ 已回到 ShareYourCC: {current_url}")
                 page.wait_for_timeout(2000)
                 break
-                
-            # 如果还在授权页面，继续等待
-            if 'linux.do' in current_url or 'connect.linux.do' in current_url:
-                page.wait_for_timeout(1000)
-                continue
                 
             # 其他情况也等待
             page.wait_for_timeout(1000)
@@ -737,7 +750,11 @@ class ShareyourccLogin(LoginAutomation):
                 continue
 
         if closed_count > 0:
-            logger.info(f"共关闭 {closed_count} 个弹窗")
+            logger.info(f"✅ 共关闭 {closed_count} 个弹窗")
+            # 重要：关闭弹窗后刷新页面，确保登录对话框能正确显示
+            logger.info("刷新页面以重新加载第三方认证界面...")
+            page.reload(wait_until='domcontentloaded')
+            page.wait_for_timeout(2000)
         else:
             logger.info("未发现需要关闭的弹窗")
 
