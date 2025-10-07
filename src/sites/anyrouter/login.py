@@ -64,18 +64,18 @@ class AnyrouterLogin(LoginAutomation):
         logger.info("开始 AnyRouter OAuth 登录")
         
         try:
+            # 阶段 0: 确保 LinuxDO 已登录（加载 Cookie 或执行登录）
+            if not self._ensure_linuxdo_logged_in(page):
+                logger.error("无法确保 LinuxDO 登录状态")
+                return False
+            
             # 阶段 1: 打开 OAuth 窗口
             auth_page = self._open_oauth_window(page)
             if not auth_page:
                 logger.error("未能打开 OAuth 窗口")
                 return False
             
-            # 阶段 2: LinuxDO 认证（如需要）
-            if not self._authenticate_linuxdo(auth_page):
-                logger.error("LinuxDO 认证失败")
-                return False
-            
-            # 阶段 3: 授权确认
+            # 阶段 2: 授权确认
             if not self._confirm_oauth_consent(auth_page):
                 logger.error("授权确认失败")
                 return False
@@ -98,17 +98,21 @@ class AnyrouterLogin(LoginAutomation):
         
         # 关闭弹窗
         self._close_popup_if_exists(page)
+        page.wait_for_timeout(300)
         
         # 点击 OAuth 按钮并捕获新窗口
         oauth_buttons = (
+            'button:has-text("使用 LinuxDO 继续")',
+            'button:has-text("使用 LinuxDO 登录")',
+            'text=使用 LinuxDO 继续',
+            'text=使用 LinuxDO 登录',
             'role=button[name="使用 LinuxDO 继续"]',
             'role=button[name="使用 LinuxDO 登录"]',
-            'text=使用 LinuxDO 继续',
         )
         
         for selector in oauth_buttons:
             try:
-                with page.expect_popup(timeout=10000) as popup_info:
+                with page.expect_popup(timeout=3000) as popup_info:
                     page.locator(selector).first.click(timeout=5000)
                 auth_page = popup_info.value
                 auth_page.wait_for_load_state('domcontentloaded')
@@ -117,51 +121,80 @@ class AnyrouterLogin(LoginAutomation):
             except Exception:
                 continue
         
-        logger.warning("未找到可用的 OAuth 按钮")
+        # 第一次未找到按钮，尝试刷新页面
+        logger.info("未找到 OAuth 按钮，尝试刷新页面...")
+        page.reload(wait_until='domcontentloaded')
+        page.wait_for_timeout(300)
+        self._close_popup_if_exists(page)
+        page.wait_for_timeout(300)
+        
+        # 再次尝试查找并点击按钮
+        for selector in oauth_buttons:
+            try:
+                with page.expect_popup(timeout=3000) as popup_info:
+                    page.locator(selector).first.click(timeout=5000)
+                auth_page = popup_info.value
+                auth_page.wait_for_load_state('domcontentloaded')
+                logger.info(f"OAuth 窗口已打开: {auth_page.url}")
+                return auth_page
+            except Exception:
+                continue
+        
+        logger.warning("刷新后仍未找到可用的 OAuth 按钮")
         return None
 
-    def _authenticate_linuxdo(self, auth_page: Page) -> bool:
-        """在 LinuxDO 授权页进行认证"""
-        # 验证页面域名
-        if 'linux.do' not in auth_page.url:
-            logger.error(f"授权页域名异常: {auth_page.url}")
-            return False
+    def _ensure_linuxdo_logged_in(self, page: Page) -> bool:
+        """确保 LinuxDO 已登录（优先使用 Cookie，失败则调用登录流程）"""
+        from src.sites.linuxdo.login import LinuxdoLogin
         
-        # 检查是否需要登录
-        login_input = auth_page.locator(
-            '#login-account-name, input[name="login"]'
-        )
-        if login_input.count() == 0:
-            logger.info("已登录 LinuxDO，跳过认证")
-            return True
+        logger.info("检查 LinuxDO 登录状态...")
         
-        # 获取凭据
+        # 尝试加载 LinuxDO Cookie
+        context = page.context
+        if self.cookie_manager.load_cookies(context, 'linuxdo', expire_days=30):
+            logger.info("发现有效的 LinuxDO Cookie，尝试验证...")
+            try:
+                # 验证 Cookie 是否有效
+                page.goto('https://linux.do/', timeout=30000)
+                page.wait_for_load_state('domcontentloaded')
+                page.wait_for_timeout(1000)
+                
+                # 检查是否已登录（没有登录表单即为已登录）
+                if page.locator('input[name="login"]').count() == 0:
+                    logger.info("LinuxDO Cookie 有效，已登录")
+                    return True
+                logger.info("LinuxDO Cookie 已过期")
+            except Exception as exc:
+                logger.warning(f"验证 LinuxDO Cookie 失败: {exc}")
+        else:
+            logger.info("未找到有效的 LinuxDO Cookie")
+        
+        # Cookie 无效或不存在，执行完整登录
+        logger.info("需要重新登录 LinuxDO")
         email, password = self._get_credentials()
         if not email or not password:
             logger.error("未提供 LinuxDO 凭据")
             return False
         
-        # 填写登录表单
-        logger.info(f"填写 LinuxDO 登录信息: {email[:3]}***{email[-10:]}")
-        login_input.first.fill(email)
+        # 创建 LinuxdoLogin 实例并复用浏览器
+        linuxdo_automation = LinuxdoLogin(headless=False)
+        linuxdo_automation.browser_manager = self.browser_manager
+        linuxdo_automation.page = page
         
-        password_input = auth_page.locator(
-            '#login-account-password, input[name="password"]'
-        ).first
-        password_input.fill(password)
-        
-        # 提交表单
-        submit_btn = auth_page.locator(
-            'form:has(#login-account-name) button[type="submit"]'
-        )
-        if submit_btn.count() > 0:
-            submit_btn.first.click(timeout=3000)
-        else:
-            password_input.press('Enter')
-        
-        auth_page.wait_for_timeout(2000)
-        logger.info("LinuxDO 认证完成")
-        return True
+        try:
+            success = linuxdo_automation.do_login(page, email=email, password=password)
+            if success:
+                # 保存 LinuxDO Cookie
+                linuxdo_automation.cookie_manager.save_cookies(
+                    context, 'linuxdo'
+                )
+                logger.info("LinuxDO 登录成功并保存 Cookie")
+                return True
+            logger.error("LinuxDO 登录失败")
+            return False
+        except Exception as exc:
+            logger.error(f"LinuxDO 登录异常: {exc}")
+            return False
 
     def _confirm_oauth_consent(self, auth_page: Page) -> bool:
         """确认 OAuth 授权"""
@@ -176,7 +209,7 @@ class AnyrouterLogin(LoginAutomation):
         )
         if remember_checkbox.count() > 0:
             try:
-                remember_checkbox.first.check(timeout=1000)
+                remember_checkbox.first.check(timeout=300)
                 logger.info("已勾选记住授权")
             except Exception:
                 pass
@@ -210,7 +243,7 @@ class AnyrouterLogin(LoginAutomation):
             if self.verify_login(page):
                 logger.info("OAuth 登录成功")
                 return True
-            page.wait_for_timeout(1000)
+            page.wait_for_timeout(300)
         
         # 尝试刷新页面
         if '/login' in page.url:
@@ -230,10 +263,16 @@ class AnyrouterLogin(LoginAutomation):
         popup_selectors = (
             'role=button[name="Close Today"]',
             'role=button[name="Close Notice"]',
+            'text=今日关闭',
+            'text=关闭公告',
+            'button:has-text("今日关闭")',
+            'button:has-text("关闭公告")',
         )
         for selector in popup_selectors:
             try:
-                page.locator(selector).first.click(timeout=1000)
+                page.locator(selector).first.click(timeout=300)
+                logger.info(f"成功关闭弹窗: {selector}")
+                break
             except Exception:
                 pass
         page.wait_for_timeout(300)
@@ -260,7 +299,7 @@ class AnyrouterLogin(LoginAutomation):
             if '/console/token' not in page.url:
                 page.goto('https://anyrouter.top/console/token', timeout=60000)
                 page.wait_for_load_state('domcontentloaded')
-                page.wait_for_timeout(1000)
+                page.wait_for_timeout(300)
             page.wait_for_load_state('networkidle')
         except Exception as exc:
             logger.warning(f"导航到令牌页失败: {exc}")
