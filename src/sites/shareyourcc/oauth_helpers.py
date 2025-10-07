@@ -88,41 +88,98 @@ def click_oauth_button(page: Page, provider: str) -> Optional[Page]:
 
 
 def confirm_google_oauth_consent(auth_page: Page) -> bool:
-    """确认 Google OAuth 授权"""
+    """确认 Google OAuth 授权
+    
+    注意：Google OAuth 已授权的应用会自动跳转，无需手动确认。
+    只有首次授权时才需要点击确认按钮。
+    """
     if 'google.com' not in auth_page.url and 'accounts.google.com' not in auth_page.url:
-        logger.info("已跳转，跳过 Google 授权确认")
+        logger.info("已跳转离开 Google，授权完成")
         return True
     
-    # Google 通常会自动处理已授权的应用
-    # 如果需要选择账号或确认权限，这里可以添加逻辑
-    logger.info("Google OAuth 页面，等待自动处理...")
-    auth_page.wait_for_timeout(3000)
+    logger.info("在 Google OAuth 页面，检查是否需要授权...")
+    
+    # 等待页面加载和可能的自动跳转
+    max_wait = 10  # 最多等待 10 秒
+    for i in range(max_wait):
+        auth_page.wait_for_timeout(1000)
+        
+        # 检查是否已经跳转离开 Google
+        if 'google.com' not in auth_page.url and 'accounts.google.com' not in auth_page.url:
+            logger.info(f"Google 自动跳转完成（{i+1}秒后）")
+            return True
+    
+    # 如果还在 Google 页面，说明可能需要手动授权（首次授权）
+    logger.info("Google 未自动跳转，可能需要手动授权（首次授权或需要重新授权）")
+    logger.warning("请在浏览器中手动完成 Google 授权")
+    
+    # 等待用户手动操作或自动跳转
+    for i in range(30):  # 等待最多 30 秒
+        auth_page.wait_for_timeout(1000)
+        if 'google.com' not in auth_page.url and 'accounts.google.com' not in auth_page.url:
+            logger.info(f"Google 授权完成（手动操作后 {i+1}秒）")
+            return True
+    
+    logger.warning("Google 授权超时，但继续执行")
     return True
 
 
 def confirm_github_oauth_consent(auth_page: Page) -> bool:
-    """确认 GitHub OAuth 授权"""
+    """确认 GitHub OAuth 授权
+    
+    注意：GitHub OAuth 已授权的应用会自动跳转，无需手动确认。
+    只有首次授权或权限更新时才需要点击 Authorize 按钮。
+    """
     if 'github.com' not in auth_page.url:
-        logger.info("已跳转，跳过 GitHub 授权确认")
+        logger.info("已跳转离开 GitHub，授权完成")
         return True
     
-    # 检查是否需要授权（首次授权或权限更新）
-    authorize_selectors = [
-        'button[type="submit"]:has-text("Authorize")',
-        'button:has-text("Authorize")',
-        'input[type="submit"][value*="Authorize"]',
-    ]
+    logger.info("在 GitHub OAuth 页面，检查是否需要授权...")
     
-    for selector in authorize_selectors:
-        try:
-            auth_page.locator(selector).first.click(timeout=5000)
-            logger.info("已点击 GitHub 授权")
-            auth_page.wait_for_timeout(2000)
+    # 等待页面加载和可能的自动跳转
+    max_wait = 10  # 最多等待 10 秒
+    for i in range(max_wait):
+        auth_page.wait_for_timeout(1000)
+        
+        # 检查是否已经跳转离开 GitHub
+        if 'github.com' not in auth_page.url:
+            logger.info(f"GitHub 自动跳转完成（{i+1}秒后）")
             return True
-        except Exception:
-            continue
+        
+        # 检查是否有授权按钮（首次授权）
+        authorize_selectors = [
+            'button[type="submit"]:has-text("Authorize")',
+            'button:has-text("Authorize")',
+            'input[type="submit"][value*="Authorize"]',
+            'button[name="authorize"]',
+        ]
+        
+        for selector in authorize_selectors:
+            try:
+                button = auth_page.locator(selector).first
+                if button.count() > 0:
+                    logger.info(f"发现授权按钮（首次授权），点击: {selector}")
+                    button.click(timeout=3000)
+                    auth_page.wait_for_timeout(2000)
+                    # 点击后继续等待跳转
+                    break
+            except Exception:
+                continue
     
-    logger.info("GitHub 无需授权或已自动跳转")
+    # 最终检查是否跳转成功
+    if 'github.com' not in auth_page.url:
+        logger.info("GitHub 授权完成")
+        return True
+    
+    logger.warning("GitHub 仍在授权页面，可能需要手动操作")
+    # 继续等待一段时间
+    for i in range(20):
+        auth_page.wait_for_timeout(1000)
+        if 'github.com' not in auth_page.url:
+            logger.info(f"GitHub 授权完成（额外等待 {i+1}秒后）")
+            return True
+    
+    logger.warning("GitHub 授权超时，但继续执行")
     return True
 
 
