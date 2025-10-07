@@ -12,8 +12,8 @@ from playwright.sync_api import Page
 from src.core.base import LoginAutomation
 from src.core.logger import setup_logger
 from src.core.paths import get_project_paths
-from src.sites.openi.popup import PopupHandler
 from src.sites.openi.cloud_task import CloudTaskManager
+from src.sites.openi.popup import PopupHandler
 
 
 logger = setup_logger("openi", get_project_paths().logs / "openi_automation.log")

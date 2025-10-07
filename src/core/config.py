@@ -5,41 +5,21 @@
 
 支持的格式
 ----------
-1) 基于站点的 users 格式（推荐 - 最简洁）:
-   {
-     "config": {
-       "task_name": "image",
-       "run_duration": 15,
-       "headless": false,
-       "use_cookies": true,
-       "cookie_expire_days": 30
-     },
-     "users": [
-       {"site": "openi", "username": "u", "password": "p"},
-       {"site": "linuxdo", "email": "e", "password": "p"},
-       {"site": "anyrouter", "email": "e", "password": "p"}
-     ]
-   }
-
-2) 统一凭据格式（向后兼容）:
-   {
-     "credentials": {
-       "openi":    [{"username": "u", "password": "p"}],
-       "linuxdo":  [{"email": "e", "password": "p"}],
-       "anyrouter": [{"email": "e", "password": "p"}]
-     },
-     "config": {
-       "openi": {"task_name": "image", "run_duration": 15, ...},
-       "linuxdo": {"cookie_expire_days": 30},
-       "anyrouter": {"cookie_expire_days": 30}
-     }
-   }
-
-3) 旧版 OpenI 格式（向后兼容）:
-   {
-     "users":  [{"username": "u", "password": "p"}],
-     "config": {"task_name": "image", "run_duration": 15, ...}
-   }
+基于站点的 users 格式（唯一支持格式）:
+{
+  "config": {
+    "task_name": "image",
+    "run_duration": 15,
+    "headless": false,
+    "use_cookies": true,
+    "cookie_expire_days": 30
+  },
+  "users": [
+    {"site": "openi", "username": "u", "password": "p"},
+    {"site": "linuxdo", "email": "e", "password": "p"},
+    {"site": "anyrouter", "email": "e", "password": "p"}
+  ]
+}
 
 环境变量回退
 ------------
@@ -102,36 +82,11 @@ class UnifiedConfigManager:
             return env if env else {}
         return {}
 
-    def _get_from_credentials_format(self, data: Dict, site: str) -> List[Dict]:
-        """格式 1：从 credentials[site] 获取凭据"""
-        creds = data.get("credentials")
-        if not isinstance(creds, dict):
-            return []
-        items = creds.get(site)
-        return list(items) if isinstance(items, list) else []
-
-    def _get_from_users_format(self, users: List, site: str) -> List[Dict]:
-        """格式 2：从 users 数组按 site 字段过滤"""
-        return [
-            u for u in users
-            if isinstance(u, dict) and _normalize_site(u.get("site", "")) == site
-        ]
-
-    def _get_from_legacy_openi_format(self, users: List, site: str) -> List[Dict]:
-        """格式 3：旧版 OpenI 格式（无 site 字段）"""
-        if site != "openi":
-            return []
-        has_site_field = any(isinstance(u, dict) and "site" in u for u in users)
-        return [] if has_site_field else list(users)
-
     def get_all_users(self, site: str) -> List[Dict]:
-        """仅从文件返回某站点的全部凭据记录。
+        """从文件返回某站点的全部凭据记录。
 
-        支持三种格式：
-        1. 统一格式：credentials[site] = [...]
-        2. 按站点划分的 users 格式：users = [{"site": "openi", ...}, ...]
-        3. 旧版 OpenI 格式：users = [{"username": ..., "password": ...}]（无 site 字段）
-
+        仅支持新格式：users = [{"site": "openi", ...}, ...]
+        
         这里不考虑环境变量；若需带环境回退的单条记录，请使用 `get_credentials()`。
         """
         data = self._load_once()
@@ -139,46 +94,30 @@ class UnifiedConfigManager:
         if not data:
             return []
 
-        # 格式 1：统一凭据格式
-        result = self._get_from_credentials_format(data, key)
-        if result:
-            return result
-
-        # 格式 2 与 3：users 数组
+        # 从 users 数组按 site 字段过滤
         users = data.get("users")
         if not isinstance(users, list):
             return []
 
-        # 格式 2：按站点划分
-        result = self._get_from_users_format(users, key)
-        if result:
-            return result
-
-        # 格式 3：旧版 OpenI
-        return self._get_from_legacy_openi_format(users, key)
+        return [
+            u for u in users
+            if isinstance(u, dict) and _normalize_site(u.get("site", "")) == key
+        ]
 
     def get_site_config(self, site: str) -> Dict:
-        """返回站点级的配置字典。
+        """返回全局配置字典。
 
-        在统一格式中，若存在则返回 `config[site]`；在旧版 OpenI 格式中，
-        当 `site == 'openi'` 时返回顶层 `config`。
+        新格式中，config 为全局配置，所有站点共享。
 
         缺失时返回空字典。
         """
         data = self._load_once()
-        key = _normalize_site(site)
         if not data:
             return {}
 
-        # 统一格式：config 是 site -> options 的映射
         cfg = data.get("config")
         if isinstance(cfg, dict):
-            # 若存在统一结构，优先返回站点专属配置
-            if key in cfg and isinstance(cfg[key], dict):
-                return dict(cfg[key])
-            # 旧版 OpenI：顶层 config，无站点作用域
-            if key == "openi" and "credentials" not in data and "users" in data:
-                return dict(cfg) if isinstance(cfg, dict) else {}
+            return dict(cfg)
 
         return {}
 

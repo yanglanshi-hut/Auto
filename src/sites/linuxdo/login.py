@@ -3,16 +3,16 @@ Linux.do 论坛登录自动化脚本
 使用 Playwright 自动登录 Linux.do 论坛，支持 Cookie 登录和快速登录
 """
 
-import time
+from __future__ import annotations
+
 from typing import Optional
 
-# 统一通过 `python -m src` 启动，无需修改 sys.path
-
 from playwright.sync_api import Page
+
 from src.core.base import LoginAutomation
+from src.core.config import UnifiedConfigManager
 from src.core.logger import setup_logger
 from src.core.paths import get_project_paths
-from src.core.config import UnifiedConfigManager
 
 logger = setup_logger("linuxdo", get_project_paths().logs / "linuxdo.log")
 
