@@ -31,7 +31,8 @@ class AnyrouterLogin(LoginAutomation):
             logger.info(f"未找到 Cookie 文件: {cookie_path}")
             return False
         success = super().try_cookie_login(page, verify_url=verify_url, expire_days=expire_days)
-        logger.info("Cookie 登录成功" if success else "Cookie 已过期；需要重新登录")
+        if not success:
+            logger.info("Cookie 验证失败，需要重新 OAuth 授权（这是正常行为）")
         return success
 
     def verify_login(self, page: Page) -> bool:
