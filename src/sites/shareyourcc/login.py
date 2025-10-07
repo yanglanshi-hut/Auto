@@ -182,9 +182,24 @@ class ShareyourccLogin(LoginAutomation):
                 logger.info(f"已跳转到登录页面: {current_url}")
                 return True
 
-            if page.locator('dialog:has-text("登录")').count() > 0:
-                logger.info("登录对话框已打开")
-                return True
+            # 检查是否打开了对话框（多种方式）
+            dialog_selectors = [
+                'dialog:has-text("登录")',
+                'dialog',  # 任何 dialog 元素
+                '[role="dialog"]',  # ARIA 对话框
+                '.modal:visible',  # 可见的模态框
+                'div[class*="modal"][class*="show"]',  # Bootstrap 风格的模态框
+            ]
+            
+            for selector in dialog_selectors:
+                try:
+                    if page.locator(selector).count() > 0:
+                        logger.info(f"登录对话框已打开（{selector}）")
+                        # 额外等待对话框内容加载
+                        page.wait_for_timeout(2000)
+                        return True
+                except Exception:
+                    continue
 
             logger.warning(f"登录页面/对话框状态不明确，当前 URL: {current_url}")
             return True  # 继续尝试

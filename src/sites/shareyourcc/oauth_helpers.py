@@ -31,12 +31,17 @@ def click_oauth_button(page: Page, provider: str) -> Optional[Page]:
     
     logger.info(f"点击 {provider} OAuth 按钮...")
     
-    # 构建选择器
+    # 等待对话框内容加载完成
+    page.wait_for_timeout(2000)
+    
+    # 构建选择器（优先在 dialog 内查找）
     oauth_selectors = []
     for name in names:
         oauth_selectors.extend([
-            f'button:has-text("{name}")',
-            f'dialog button:has-text("{name}")',
+            f'dialog button:has-text("{name}")',  # 优先对话框内的按钮
+            f'[role="dialog"] button:has-text("{name}")',  # ARIA 对话框
+            f'.modal button:has-text("{name}")',  # 模态框内
+            f'button:has-text("{name}")',  # 普通按钮
         ])
     
     # 尝试点击并捕获新窗口
@@ -46,23 +51,34 @@ def click_oauth_button(page: Page, provider: str) -> Optional[Page]:
             if button.count() > 0:
                 logger.info(f"找到 {provider} OAuth 按钮: {selector}")
                 
+                # 确保按钮可见并可点击
+                try:
+                    button.scroll_into_view_if_needed(timeout=3000)
+                    page.wait_for_timeout(500)
+                except Exception:
+                    pass
+                
                 # 尝试捕获新窗口
                 try:
-                    with page.expect_popup(timeout=3000) as popup_info:
-                        button.click(timeout=5000)
+                    with page.expect_popup(timeout=5000) as popup_info:
+                        button.click(timeout=5000, force=False)
                     
                     auth_page = popup_info.value
                     auth_page.wait_for_load_state('domcontentloaded')
                     logger.info(f"{provider} OAuth 在新窗口打开: {auth_page.url}")
                     return auth_page
-                except Exception:
+                except Exception as popup_exc:
+                    logger.debug(f"没有新窗口弹出: {popup_exc}")
                     # 没有新窗口，检查是否在当前页面跳转
-                    page.wait_for_timeout(2000)
-                    page.wait_for_load_state('domcontentloaded')
+                    page.wait_for_timeout(3000)
+                    page.wait_for_load_state('domcontentloaded', timeout=10000)
                     
-                    if '/oauth' in page.url or '/auth' in page.url:
-                        logger.info(f"{provider} OAuth 在当前页面打开: {page.url}")
+                    current_url = page.url
+                    if '/oauth' in current_url or '/auth' in current_url or 'github.com' in current_url or 'google.com' in current_url or 'linux.do' in current_url:
+                        logger.info(f"{provider} OAuth 在当前页面打开: {current_url}")
                         return page
+                    
+                    logger.warning(f"点击后页面未跳转，当前 URL: {current_url}")
         except Exception as exc:
             logger.debug(f"尝试选择器 {selector} 失败: {exc}")
             continue
