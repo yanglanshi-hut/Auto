@@ -178,6 +178,13 @@ class ShareyourccLogin(LoginAutomation):
 
             # 检查是否跳转到登录页面或对话框打开
             current_url = page.url
+            
+            # 重要：检查是否意外跳转到了已登录页面（说明已经登录）
+            if '/dashboard' in current_url or '/console' in current_url or '/api-keys' in current_url:
+                logger.info(f"点击登录按钮后跳转到: {current_url}")
+                logger.info("检测到已登录状态，无需继续登录流程")
+                return False  # 返回 False 表示不需要继续登录
+            
             if '/login' in current_url or '/auth' in current_url:
                 logger.info(f"已跳转到登录页面: {current_url}")
                 return True
@@ -233,7 +240,12 @@ class ShareyourccLogin(LoginAutomation):
             page.wait_for_timeout(2000)
             
             # 导航到登录页面
-            if not self._navigate_to_login_page(page):
+            nav_result = self._navigate_to_login_page(page)
+            if nav_result is False:
+                # 返回 False 表示已经登录，无需继续
+                logger.info("点击登录按钮后发现已登录，跳过 OAuth 流程")
+                return True
+            elif not nav_result:
                 logger.error("无法导航到登录页面")
                 return False
             
@@ -281,7 +293,12 @@ class ShareyourccLogin(LoginAutomation):
             page.wait_for_timeout(2000)
             
             # 导航到登录页面
-            if not self._navigate_to_login_page(page):
+            nav_result = self._navigate_to_login_page(page)
+            if nav_result is False:
+                # 返回 False 表示已经登录，无需继续
+                logger.info("点击登录按钮后发现已登录，跳过 OAuth 流程")
+                return True
+            elif not nav_result:
                 logger.error("无法导航到登录页面")
                 return False
             
@@ -291,10 +308,18 @@ class ShareyourccLogin(LoginAutomation):
                 logger.error("未能打开 GitHub OAuth 窗口")
                 return False
             
-            # 阶段 2: GitHub 授权确认（如果需要）
-            if not self._confirm_github_oauth_consent(auth_page):
-                logger.error("GitHub 授权确认失败")
-                return False
+            # 阶段 2: 等待授权自动完成并跳转到 dashboard
+            # 因为已经注入了 GitHub Cookie，授权会自动完成
+            logger.info("等待 GitHub OAuth 自动授权...")
+            auth_page.wait_for_timeout(3000)
+            
+            # 检查是否已经自动跳转
+            if 'shareyour.cc' in auth_page.url:
+                logger.info("GitHub OAuth 已自动跳转回 ShareYourCC")
+            else:
+                # 如果还在 GitHub，等待或手动跳转
+                logger.info("仍在 GitHub 页面，等待自动跳转...")
+                auth_page.wait_for_timeout(3000)
             
             # 最终验证
             return self._verify_oauth_success(page)
@@ -329,7 +354,12 @@ class ShareyourccLogin(LoginAutomation):
             page.wait_for_timeout(2000)
 
             # 导航到登录页面
-            if not self._navigate_to_login_page(page):
+            nav_result = self._navigate_to_login_page(page)
+            if nav_result is False:
+                # 返回 False 表示已经登录，无需继续
+                logger.info("点击登录按钮后发现已登录，跳过 OAuth 流程")
+                return True
+            elif not nav_result:
                 logger.error("无法导航到登录页面")
                 return False
 
