@@ -519,14 +519,32 @@ class AnyrouterLogin(LoginAutomation):
             'button:has-text("今日关闭")',
             'button:has-text("关闭公告")',
         )
+        
+        closed_count = 0
         for selector in popup_selectors:
             try:
-                page.locator(selector).first.click(timeout=300)
-                logger.info(f"成功关闭弹窗: {selector}")
-                break
+                buttons = page.locator(selector)
+                count = buttons.count()
+                if count > 0:
+                    for i in range(count):
+                        try:
+                            button = buttons.nth(i)
+                            if button.is_visible():
+                                button.click(timeout=1000)
+                                closed_count += 1
+                                logger.info(f"成功关闭弹窗 {closed_count}: {selector}")
+                                page.wait_for_timeout(500)
+                        except Exception:
+                            continue
             except Exception:
                 pass
-        page.wait_for_timeout(300)
+        
+        if closed_count > 0:
+            logger.info(f"✅ 共关闭 {closed_count} 个弹窗")
+            # 重要：关闭弹窗后刷新页面，确保登录对话框能正确显示
+            logger.info("刷新页面以重新加载第三方认证界面...")
+            page.reload(wait_until='domcontentloaded')
+            page.wait_for_timeout(2000)
 
     def _get_credentials(self) -> tuple[str, str]:
         """获取 AnyRouter 凭据"""
