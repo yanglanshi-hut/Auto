@@ -365,24 +365,84 @@ class ShareyourccLogin(LoginAutomation):
         return click_oauth_button(page, 'github')
 
     def _ensure_google_logged_in(self, page: Page) -> bool:
-        """确保 Google 已登录
+        """确保 Google 已登录（加载 Google Cookie）
         
-        注意：目前假设用户已在浏览器中登录 Google，
-        或者 OAuth 流程会自动处理登录。
+        注意：尝试加载已保存的 Google Cookie 到当前浏览器上下文。
+        如果没有 Cookie 或 Cookie 失效，OAuth 流程会自动处理登录。
         """
         logger.info("检查 Google 登录状态...")
-        logger.info("Google OAuth 将在授权页面自动处理登录")
+        
+        try:
+            # 尝试加载 Google Cookie 到当前上下文
+            if self.cookie_manager.load_cookies(page.context, 'google', expire_days=30):
+                logger.info("已加载 Google Cookie 到浏览器上下文")
+            else:
+                logger.info("未找到 Google Cookie，OAuth 流程将处理登录")
+        except Exception as exc:
+            logger.warning(f"加载 Google Cookie 失败: {exc}")
+        
         return True
     
     def _ensure_github_logged_in(self, page: Page) -> bool:
-        """确保 GitHub 已登录
+        """确保 GitHub 已登录（加载 GitHub Cookie）
         
-        注意：目前假设用户已在浏览器中登录 GitHub，
-        或者 OAuth 流程会自动处理登录。
+        注意：尝试加载已保存的 GitHub Cookie 到当前浏览器上下文。
+        如果没有 Cookie 或 Cookie 失效，可以选择自动登录 GitHub。
         """
         logger.info("检查 GitHub 登录状态...")
-        logger.info("GitHub OAuth 将在授权页面自动处理登录")
-        return True
+        
+        try:
+            # 尝试加载 GitHub Cookie 到当前上下文
+            if self.cookie_manager.load_cookies(page.context, 'github', expire_days=30):
+                logger.info("已加载 GitHub Cookie 到浏览器上下文")
+                return True
+            else:
+                logger.info("未找到 GitHub Cookie，尝试自动登录 GitHub...")
+        except Exception as exc:
+            logger.warning(f"加载 GitHub Cookie 失败: {exc}")
+        
+        # 尝试使用 GitHub 登录模块自动登录
+        try:
+            from src.sites.github.login import GithubLogin
+            from src.core.config import UnifiedConfigManager
+            
+            # 获取 GitHub 凭据
+            config_mgr = UnifiedConfigManager()
+            github_creds = config_mgr.get_credentials('github', fallback_env=True)
+            username = github_creds.get('username', '')
+            password = github_creds.get('password', '')
+            
+            if not username or not password:
+                logger.warning("未在配置或环境变量中找到 GitHub 凭据")
+                logger.info("GitHub OAuth 将在授权页面手动处理登录")
+                return True
+            
+            # 创建 GitHub 登录实例并复用浏览器
+            logger.info("使用配置中的 GitHub 凭据自动登录...")
+            github_automation = GithubLogin(
+                headless=self.headless,
+                browser=self.browser,
+                context=page.context,
+            )
+            
+            # 在新标签页中登录 GitHub
+            github_page = page.context.new_page()
+            try:
+                if github_automation.do_login(github_page, username=username, password=password):
+                    logger.info("GitHub 自动登录成功")
+                    # 保存 GitHub Cookie
+                    self.cookie_manager.save_cookies(page.context, 'github')
+                    return True
+                else:
+                    logger.warning("GitHub 自动登录失败，将在 OAuth 页面手动登录")
+                    return True
+            finally:
+                github_page.close()
+                
+        except Exception as exc:
+            logger.warning(f"GitHub 自动登录失败: {exc}")
+            logger.info("将在 OAuth 授权页面手动处理登录")
+            return True
     
     def _ensure_linuxdo_logged_in(self, page: Page) -> bool:
         """确保 LinuxDO 已登录（优先使用 Cookie，失败则调用登录流程）
