@@ -145,22 +145,72 @@ def _handle_linuxdo(args: argparse.Namespace) -> int:
 
 
 def _handle_shareyourcc(args: argparse.Namespace) -> int:
+    """处理 ShareYourCC 登录（支持多用户配置）"""
     try:
-        from src.sites.shareyourcc.login import login_to_shareyourcc
+        from src.sites.shareyourcc.login import ShareyourccLogin
+        from src.core.config import UnifiedConfigManager
     except Exception as exc:
         print(f"Failed to import shareyourcc login module: {exc}")
         return 2
 
     use_cookie = not args.no_cookie
-    ok = False
+    
     try:
-        ok = login_to_shareyourcc(use_cookie=use_cookie, headless=args.headless)
-    except SystemExit as e:
-        return int(e.code) if e.code is not None else 1
+        # 获取所有 ShareYourCC 用户配置
+        config_mgr = UnifiedConfigManager()
+        all_users = config_mgr.get_all_users('shareyourcc')
+        
+        # 如果没有配置文件中的用户，尝试从环境变量获取
+        if not all_users:
+            env_creds = config_mgr.get_credentials('shareyourcc', fallback_env=True)
+            if env_creds:
+                all_users = [env_creds]
+            else:
+                print("未找到 ShareYourCC 用户配置")
+                print("请在 config/users.json 中添加 ShareYourCC 配置")
+                return 1
+        
+        print(f"找到 {len(all_users)} 个 ShareYourCC 用户配置")
+        
+        # 循环处理每个用户
+        failed_count = 0
+        for idx, user_config in enumerate(all_users, 1):
+            login_type = user_config.get('login_type', 'linuxdo_oauth')
+            print(f"\n{'='*60}")
+            print(f"[{idx}/{len(all_users)}] 处理 ShareYourCC 用户 (login_type: {login_type})")
+            print(f"{'='*60}")
+            
+            try:
+                # 创建实例时传递 login_type，以区分不同用户的 Cookie
+                automation = ShareyourccLogin(headless=args.headless, login_type=login_type)
+                ok = automation.run(
+                    use_cookie=use_cookie,
+                    verify_url='https://shareyour.cc/',
+                    **user_config
+                )
+                
+                if ok:
+                    print(f"✅ 用户 {idx} 登录成功 (login_type: {login_type})")
+                else:
+                    print(f"❌ 用户 {idx} 登录失败 (login_type: {login_type})")
+                    failed_count += 1
+                    
+            except SystemExit as e:
+                print(f"❌ 用户 {idx} 登录异常退出 (login_type: {login_type})")
+                failed_count += 1
+            except Exception as exc:
+                print(f"❌ 用户 {idx} 登录失败: {exc}")
+                failed_count += 1
+        
+        print(f"\n{'='*60}")
+        print(f"完成！成功: {len(all_users) - failed_count}/{len(all_users)}, 失败: {failed_count}")
+        print(f"{'='*60}\n")
+        
+        return 0 if failed_count == 0 else 1
+        
     except Exception as exc:
-        print(f"shareyourcc login failed: {exc}")
-        ok = False
-    return 0 if ok else 1
+        print(f"shareyourcc multi-user login failed: {exc}")
+        return 1
 
 
 def _handle_github(args: argparse.Namespace) -> int:

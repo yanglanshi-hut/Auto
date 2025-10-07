@@ -74,8 +74,16 @@ def click_oauth_button(page: Page, provider: str) -> Optional[Page]:
                     page.wait_for_load_state('domcontentloaded', timeout=10000)
                     
                     current_url = page.url
+                    
+                    # 检查是否跳转到 OAuth 授权页面
                     if '/oauth' in current_url or '/auth' in current_url or 'github.com' in current_url or 'google.com' in current_url or 'linux.do' in current_url:
                         logger.info(f"{provider} OAuth 在当前页面打开: {current_url}")
+                        return page
+                    
+                    # 重要：检查是否直接跳转到了 ShareYourCC 已登录页面（说明授权已自动完成）
+                    if 'shareyour.cc' in current_url and ('/dashboard' in current_url or '/console' in current_url):
+                        logger.info(f"✅ 点击 {provider} OAuth 按钮后直接跳转到已登录页面: {current_url}")
+                        logger.info("授权已自动完成，无需额外操作")
                         return page
                     
                     logger.warning(f"点击后页面未跳转，当前 URL: {current_url}")

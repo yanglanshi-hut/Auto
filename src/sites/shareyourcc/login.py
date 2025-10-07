@@ -22,10 +22,18 @@ logger = setup_logger("shareyourcc", get_project_paths().logs / "shareyourcc.log
 
 
 class ShareyourccLogin(LoginAutomation):
-    """ShareYourCC 登录自动化实现"""
+    """ShareYourCC 登录自动化实现（支持多用户）"""
 
-    def __init__(self, *, headless: bool = False) -> None:
-        super().__init__('shareyourcc', headless=headless)
+    def __init__(self, *, headless: bool = False, login_type: Optional[str] = None) -> None:
+        # 根据 login_type 设置不同的 site_name，以区分不同 OAuth 用户的 Cookie
+        # 例如：shareyourcc_github_oauth, shareyourcc_linuxdo_oauth, shareyourcc_google_oauth
+        if login_type:
+            site_name = f'shareyourcc_{login_type}'
+        else:
+            site_name = 'shareyourcc'
+        
+        super().__init__(site_name, headless=headless)
+        self.login_type = login_type
 
     def try_cookie_login(
         self,
@@ -734,69 +742,115 @@ class ShareyourccLogin(LoginAutomation):
             logger.info("未发现需要关闭的弹窗")
 
     def _do_daily_checkin(self, page: Page) -> None:
-        """执行每日签到"""
+        """执行每日签到
+        
+        根据截图，签到按钮位于"快捷操作"区域的"每日签到"卡片中，
+        是一个绿色的"可签到"按钮。
+        """
         logger.info("开始执行签到...")
 
         try:
             # 等待快捷操作区域加载
-            page.wait_for_timeout(1000)
+            logger.info("等待页面加载...")
+            page.wait_for_timeout(2000)
             
-            # 查找签到按钮的多种选择器
-            # 根据截图，签到可能是卡片形式，需要点击整个卡片区域
+            # 根据截图优化后的签到按钮选择器
+            # 优先级：精确匹配 > 文本匹配 > 通用选择器
             checkin_selectors = [
-                # 卡片式按钮
-                'div:has-text("每日签到"):has-text("获取随机奖励")',
-                'div:has-text("每日签到")',
-                '[class*="card"]:has-text("每日签到")',
-                '[class*="Card"]:has-text("每日签到")',
-                # 传统按钮
-                'button:has-text("签到")',
+                # 最精确：在"每日签到"区域内查找"可签到"按钮
                 'button:has-text("可签到")',
                 'button:has-text("每日签到")',
+                'button:has-text("签到")',
+                
+                # 卡片内的按钮（根据截图结构）
+                '*:has-text("每日签到") >> button:visible',
+                '*:has-text("每日签到") >> button',
+                
+                # 其他可能的按钮形式
+                'button[class*="checkin"]',
+                'button[class*="signin"]',
+                'button[class*="daily"]',
+                
+                # 已签到状态的按钮
                 'button:has-text("已签到")',
-                # 其他可能的形式
-                'a:has-text("每日签到")',
-                '[role="button"]:has-text("每日签到")',
-                '.checkin',
-                '[data-testid*="checkin"]',
+                'button:has-text("今日已签到")',
+                
+                # 作为链接的签到
+                'a:has-text("可签到")',
+                'a:has-text("签到")',
+                
+                # 通用选择器
+                '[role="button"]:has-text("签到")',
+                'div[role="button"]:has-text("签到")',
             ]
 
             clicked = False
+            already_checked_in = False
+            
             for selector in checkin_selectors:
                 try:
                     elements = page.locator(selector)
                     count = elements.count()
                     if count > 0:
-                        logger.info(f"找到签到元素: {selector} (共{count}个)")
+                        logger.info(f"找到签到元素: {selector} (共 {count} 个)")
+                        
                         # 尝试点击第一个可见的元素
                         for i in range(count):
                             element = elements.nth(i)
                             try:
-                                if element.is_visible():
-                                    # 滚动到元素位置
-                                    element.scroll_into_view_if_needed(timeout=2000)
-                                    page.wait_for_timeout(300)
-                                    element.click(timeout=5000)
+                                # 检查元素可见性
+                                if not element.is_visible():
+                                    continue
+                                
+                                # 获取按钮文本判断状态
+                                text = element.inner_text()
+                                logger.info(f"签到按钮文本: {text}")
+                                
+                                # 如果已经签到，记录并跳过
+                                if '已签到' in text or '今日已签到' in text:
+                                    logger.info("✅ 今日已签到")
+                                    already_checked_in = True
                                     clicked = True
-                                    logger.info(f"签到元素已点击 (索引{i})")
-                                    page.wait_for_timeout(2000)
                                     break
+                                
+                                # 滚动到元素位置并点击
+                                logger.info(f"尝试点击签到按钮 (索引 {i})...")
+                                element.scroll_into_view_if_needed(timeout=3000)
+                                page.wait_for_timeout(500)
+                                element.click(timeout=5000)
+                                clicked = True
+                                logger.info("✅ 签到按钮已点击")
+                                page.wait_for_timeout(3000)
+                                
+                                # 检查是否出现签到成功提示
+                                if page.locator('text=/签到成功|恭喜|奖励/i').count() > 0:
+                                    logger.info("✅ 签到成功！")
+                                
+                                break
+                                
                             except Exception as e:
-                                logger.debug(f"点击签到元素{i}失败: {e}")
+                                logger.debug(f"点击签到按钮失败 (索引 {i}): {e}")
                                 continue
+                        
                         if clicked:
                             break
+                            
                 except Exception as exc:
-                    logger.debug(f"尝试选择器 {selector} 失败: {exc}")
+                    logger.debug(f"尝试选择器失败 {selector}: {exc}")
                     continue
 
             if not clicked:
-                logger.warning("未找到签到按钮，可能今天已签到或页面结构变化")
+                logger.warning("⚠️  未找到签到按钮，可能原因：")
+                logger.warning("   1. 今天已经签到过了")
+                logger.warning("   2. 页面结构发生变化")
+                logger.warning("   3. 签到功能暂时不可用")
+            elif already_checked_in:
+                logger.info("今日已签到，无需重复操作")
             else:
-                logger.info("签到操作完成")
+                logger.info("✅ 签到操作完成")
 
         except Exception as exc:
-            logger.error(f"签到操作失败: {exc}")
+            logger.error(f"❌ 签到操作失败: {exc}")
 
     def _do_lucky_draw(self, page: Page) -> None:
         """执行幸运抽奖"""
