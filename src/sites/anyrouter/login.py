@@ -176,6 +176,9 @@ class AnyrouterLogin(LoginAutomation):
         logger.info("开始 GitHub OAuth 登录")
         
         try:
+            # 为避免旧的 anyrouter 域 Cookie 造成“请清除 Cookie 后重试”的服务端提示，
+            # 在 OAuth 前确保上下文中不含 anyrouter.top 的 Cookie。
+            page = self._ensure_clean_context_for_oauth(page, third_party='github')
             # 阶段 0: 确保 GitHub 已登录
             if not self._ensure_github_logged_in(page):
                 logger.error("无法确保 GitHub 登录状态")
@@ -207,6 +210,8 @@ class AnyrouterLogin(LoginAutomation):
         logger.info("开始 LinuxDO OAuth 登录")
         
         try:
+            # 同样避免 anyrouter 旧 Cookie 干扰
+            page = self._ensure_clean_context_for_oauth(page, third_party='linuxdo')
             # 阶段 0: 确保 LinuxDO 已登录（加载 Cookie 或执行登录）
             if not self._ensure_linuxdo_logged_in(page):
                 logger.error("无法确保 LinuxDO 登录状态")
@@ -573,6 +578,45 @@ class AnyrouterLogin(LoginAutomation):
                         return p
                 except Exception:
                     continue
+        except Exception:
+            pass
+        return page
+
+    def _has_anyrouter_cookies(self, context) -> bool:
+        """检测上下文中是否含有 anyrouter.top 域相关 Cookie。"""
+        try:
+            for ck in context.cookies():
+                dom = (ck.get('domain') or '').lstrip('.')
+                if dom.endswith('anyrouter.top'):
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _reset_context(self) -> Page:
+        """重建干净的浏览器上下文并返回新页面。"""
+        try:
+            if self.context is not None:
+                try:
+                    self.context.close()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        self.context = self.browser.new_context(**(self.context_kwargs or {}))
+        self.page = self.context.new_page()
+        return self.page
+
+    def _ensure_clean_context_for_oauth(self, page: Page, *, third_party: str) -> Page:
+        """若当前上下文含 anyrouter.top Cookie，则重建上下文，避免服务端要求清 Cookie。
+
+        third_party: 'github' 或 'linuxdo'，用于后续登录确保第三方已登录。
+        注意：此处不主动加载第三方 Cookie，交由 _ensure_*_logged_in 处理。
+        """
+        try:
+            if self._has_anyrouter_cookies(page.context):
+                logger.info("检测到 anyrouter 域 Cookie，重建干净上下文以避免冲突…")
+                return self._reset_context()
         except Exception:
             pass
         return page
