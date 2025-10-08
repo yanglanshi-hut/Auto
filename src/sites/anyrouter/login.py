@@ -648,17 +648,25 @@ class AnyrouterLogin(LoginAutomation):
         return self.page
 
     def _ensure_clean_context_for_oauth(self, page: Page, *, third_party: str) -> Page:
-        """若当前上下文含 anyrouter.top Cookie，则重建上下文，避免服务端要求清 Cookie。
-
-        third_party: 'github' 或 'linuxdo'，用于后续登录确保第三方已登录。
-        注意：此处不主动加载第三方 Cookie，交由 _ensure_*_logged_in 处理。
-        """
+        """若上下文含 anyrouter Cookie，则重建上下文并预载第三方 Cookie。"""
         try:
-            if self._has_anyrouter_cookies(page.context):
-                logger.info("检测到 anyrouter 域 Cookie，重建干净上下文以避免冲突…")
-                return self._reset_context()
+            if not self._has_anyrouter_cookies(page.context):
+                return page
+        except Exception:
+            return page
+
+        logger.info("检测到 anyrouter 域 Cookie，重建干净上下文以避免冲突…")
+        page = self._reset_context()
+
+        # 预载第三方站点 Cookie，避免后续校验时二次登录
+        try:
+            if third_party == 'github':
+                self.cookie_manager.load_cookies(self.context, 'github', expire_days=30)
+            elif third_party == 'linuxdo':
+                self.cookie_manager.load_cookies(self.context, 'linuxdo', expire_days=30)
         except Exception:
             pass
+
         return page
 
     def _find_and_open_popup(self, page: Page, selectors, *, wait_timeout: int = 8000) -> Optional[Page]:
