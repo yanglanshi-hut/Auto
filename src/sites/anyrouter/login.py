@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from typing import Optional
+import time
 
 from playwright.sync_api import Page
 
@@ -250,7 +251,7 @@ class AnyrouterLogin(LoginAutomation):
         # 等待页面稳定
         page.wait_for_timeout(1000)
         logger.info("开始查找 GitHub OAuth 按钮...")
-        auth_page = self._find_and_open_popup(page, GITHUB_OAUTH_BUTTON_SELECTORS)
+        auth_page = self._find_and_open_popup(page, GITHUB_OAUTH_BUTTON_SELECTORS, wait_timeout=12000)
         if auth_page:
             logger.info(f"GitHub OAuth 窗口已打开: {auth_page.url}")
             return auth_page
@@ -263,7 +264,7 @@ class AnyrouterLogin(LoginAutomation):
         page.wait_for_timeout(300)
         
         # 再次尝试查找并点击按钮
-        auth_page = self._find_and_open_popup(page, GITHUB_OAUTH_BUTTON_SELECTORS)
+        auth_page = self._find_and_open_popup(page, GITHUB_OAUTH_BUTTON_SELECTORS, wait_timeout=12000)
         if auth_page:
             logger.info(f"GitHub OAuth 窗口已打开: {auth_page.url}")
             return auth_page
@@ -283,7 +284,7 @@ class AnyrouterLogin(LoginAutomation):
         page.wait_for_timeout(300)
         
         # 点击 OAuth 按钮并捕获新窗口
-        auth_page = self._find_and_open_popup(page, LINUXDO_OAUTH_BUTTON_SELECTORS)
+        auth_page = self._find_and_open_popup(page, LINUXDO_OAUTH_BUTTON_SELECTORS, wait_timeout=12000)
         if auth_page:
             logger.info(f"OAuth 窗口已打开: {auth_page.url}")
             return auth_page
@@ -296,7 +297,7 @@ class AnyrouterLogin(LoginAutomation):
         page.wait_for_timeout(300)
         
         # 再次尝试查找并点击按钮
-        auth_page = self._find_and_open_popup(page, LINUXDO_OAUTH_BUTTON_SELECTORS)
+        auth_page = self._find_and_open_popup(page, LINUXDO_OAUTH_BUTTON_SELECTORS, wait_timeout=12000)
         if auth_page:
             logger.info(f"OAuth 窗口已打开: {auth_page.url}")
             return auth_page
@@ -621,20 +622,40 @@ class AnyrouterLogin(LoginAutomation):
             pass
         return page
 
-    def _find_and_open_popup(self, page: Page, selectors) -> Optional[Page]:
-        """遍历选择器，点击并等待弹出的 OAuth 窗口，返回新页面。"""
-        for selector in selectors:
+    def _find_and_open_popup(self, page: Page, selectors, *, wait_timeout: int = 8000) -> Optional[Page]:
+        """等待任一按钮出现并点击，返回弹出的 OAuth 页面。"""
+        sel = self._wait_for_any_selector(page, selectors, timeout_ms=wait_timeout)
+        if not sel:
+            return None
+        try:
+            btn = page.locator(sel).first
             try:
-                buttons = page.locator(selector)
-                count = buttons.count()
-                if count > 0:
-                    with page.expect_popup(timeout=3000) as popup_info:
-                        buttons.first.click(timeout=5000)
-                    auth_page = popup_info.value
-                    auth_page.wait_for_load_state('domcontentloaded')
-                    return auth_page
+                btn.scroll_into_view_if_needed(timeout=1000)
             except Exception:
-                continue
+                pass
+            with page.expect_popup(timeout=5000) as popup_info:
+                btn.click(timeout=5000)
+            auth_page = popup_info.value
+            auth_page.wait_for_load_state('domcontentloaded')
+            return auth_page
+        except Exception:
+            return None
+
+    def _wait_for_any_selector(self, page: Page, selectors, *, timeout_ms: int = 8000, poll_ms: int = 300) -> Optional[str]:
+        """在给定超时内轮询多个选择器，返回第一个可见的选择器。"""
+        end = time.time() + max(0, timeout_ms) / 1000.0
+        while time.time() < end:
+            for sel in selectors:
+                try:
+                    loc = page.locator(sel).first
+                    if loc.count() > 0 and loc.is_visible():
+                        return sel
+                except Exception:
+                    continue
+            try:
+                page.wait_for_timeout(poll_ms)
+            except Exception:
+                pass
         return None
 
     def _fill_first_available(self, page: Page, selectors, value: str) -> bool:
