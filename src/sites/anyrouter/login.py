@@ -511,9 +511,13 @@ class AnyrouterLogin(LoginAutomation):
         logger.error(f"登录验证失败，当前 URL: {page.url}")
         return False
 
-    def _close_popup_if_exists(self, page: Page) -> None:
-        """关闭公告弹窗（如存在）"""
+    def _close_popup_if_exists(self, page: Page, *, reload_after: bool = True) -> None:
+        """关闭公告弹窗（如存在）
+
+        reload_after: 关闭后是否安全刷新页面（默认 True）。
+        """
         closed_count = 0
+        # 优先尝试常见按钮
         for selector in ANNOUNCEMENT_POPUP_SELECTORS:
             try:
                 buttons = page.locator(selector)
@@ -532,12 +536,47 @@ class AnyrouterLogin(LoginAutomation):
             except Exception:
                 pass
         
+        # 增强：尝试关闭带 dialog 角色的弹窗（点击右上角关闭或 ESC）
+        try:
+            dialog = page.locator('role=dialog')
+            if dialog.count() > 0:
+                # 1) 尝试通用的关闭按钮
+                extra_close_selectors = (
+                    'role=button[name="Close"]',
+                    'role=button[name="关闭"]',
+                    'button[aria-label*="close" i]',
+                    'button:has-text("×")',
+                )
+                for sel in extra_close_selectors:
+                    try:
+                        loc = dialog.locator(sel).first
+                        if loc.count() > 0 and loc.is_visible():
+                            loc.click(timeout=800)
+                            closed_count += 1
+                            page.wait_for_timeout(300)
+                            break
+                    except Exception:
+                        continue
+                
+                # 2) 尝试通过键盘 ESC 关闭
+                if dialog.count() > 0:
+                    try:
+                        page.keyboard.press('Escape')
+                        page.wait_for_timeout(200)
+                        if dialog.count() == 0:
+                            closed_count += 1
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        
         if closed_count > 0:
             logger.info(f"✅ 共关闭 {closed_count} 个弹窗")
             # 重要：关闭弹窗后刷新页面，确保登录对话框能正确显示
-            logger.info("刷新页面以重新加载第三方认证界面...")
-            page = self._safe_reload(page)
-            page.wait_for_timeout(2000)
+            if reload_after:
+                logger.info("刷新页面以重新加载第三方认证界面...")
+                page = self._safe_reload(page)
+                page.wait_for_timeout(2000)
 
     def _safe_reload(self, page: Page) -> Page:
         """安全刷新：在 frame 分离或页面被替换时，避免抛错并切换到活动页面。
@@ -645,6 +684,13 @@ class AnyrouterLogin(LoginAutomation):
         """在给定超时内轮询多个选择器，返回第一个可见的选择器。"""
         end = time.time() + max(0, timeout_ms) / 1000.0
         while time.time() < end:
+            # 若弹窗出现，先尝试关闭但不刷新
+            try:
+                # 通过 dialog 或公告关键字快速判断
+                if page.locator('role=dialog').count() > 0 or page.locator('text=系统公告').count() > 0:
+                    self._close_popup_if_exists(page, reload_after=False)
+            except Exception:
+                pass
             for sel in selectors:
                 try:
                     loc = page.locator(sel).first
