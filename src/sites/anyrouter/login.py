@@ -253,7 +253,7 @@ class AnyrouterLogin(LoginAutomation):
         
         # 第一次未找到按钮，尝试刷新页面（与 LinuxDO 保持一致）
         logger.info("未找到 GitHub OAuth 按钮，尝试刷新页面...")
-        page.reload(wait_until='domcontentloaded')
+        page = self._safe_reload(page)
         page.wait_for_timeout(300)
         self._close_popup_if_exists(page)
         page.wait_for_timeout(300)
@@ -311,7 +311,7 @@ class AnyrouterLogin(LoginAutomation):
         
         # 第一次未找到按钮，尝试刷新页面
         logger.info("未找到 OAuth 按钮，尝试刷新页面...")
-        page.reload(wait_until='domcontentloaded')
+        page = self._safe_reload(page)
         page.wait_for_timeout(300)
         self._close_popup_if_exists(page)
         page.wait_for_timeout(300)
@@ -523,6 +523,8 @@ class AnyrouterLogin(LoginAutomation):
 
     def _verify_oauth_success(self, page: Page) -> bool:
         """验证 OAuth 登录成功"""
+        # 在某些 OAuth 回调中，原页面的主 frame 会被替换或关闭，直接 reload 可能抛出
+        # “frame was detached”。因此这里尽量避免无条件 reload，并在需要时切换到仍然存活的页面。
         page.bring_to_front()
         page.wait_for_timeout(2000)
         
@@ -533,12 +535,13 @@ class AnyrouterLogin(LoginAutomation):
                 return True
             page.wait_for_timeout(300)
         
-        # 尝试刷新页面
+        # 尝试在不破坏上下文的情况下稳定当前页
         if '/login' in page.url:
-            logger.info("仍在登录页，尝试刷新...")
-            page.reload(wait_until='domcontentloaded')
+            logger.info("仍在登录页，尝试安全刷新...")
+            page = self._safe_reload(page)
             page.wait_for_timeout(2000)
-            
+
+            # 刷新后再检查一次
             if self.verify_login(page):
                 logger.info("刷新后登录成功")
                 return True
@@ -580,8 +583,52 @@ class AnyrouterLogin(LoginAutomation):
             logger.info(f"✅ 共关闭 {closed_count} 个弹窗")
             # 重要：关闭弹窗后刷新页面，确保登录对话框能正确显示
             logger.info("刷新页面以重新加载第三方认证界面...")
-            page.reload(wait_until='domcontentloaded')
+            page = self._safe_reload(page)
             page.wait_for_timeout(2000)
+
+    def _safe_reload(self, page: Page) -> Page:
+        """安全刷新：在 frame 分离或页面被替换时，避免抛错并切换到活动页面。
+
+        返回可用的 Page（可能与传入的不同）。
+        """
+        try:
+            if hasattr(page, 'is_closed') and page.is_closed():
+                raise RuntimeError('page is already closed')
+            page.reload(wait_until='domcontentloaded')
+            return page
+        except Exception as e:
+            logger.warning(f"页面刷新失败，将尝试定位当前活动页面: {e}")
+            try:
+                active = self._locate_active_anyrouter_page(page)
+                # 等待页面稳定
+                try:
+                    active.wait_for_load_state('domcontentloaded')
+                except Exception:
+                    pass
+                return active
+            except Exception:
+                return page
+
+    def _locate_active_anyrouter_page(self, page: Page) -> Page:
+        """在当前上下文中定位仍然存活且与 AnyRouter 相关的页面。"""
+        try:
+            context = page.context
+            for p in context.pages:
+                try:
+                    if getattr(p, 'is_closed', lambda: False)():
+                        continue
+                    url = ''
+                    try:
+                        url = p.url
+                    except Exception:
+                        url = ''
+                    if 'anyrouter.top' in url:
+                        return p
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return page
 
     def _get_credentials(self) -> tuple[str, str]:
         """获取 AnyRouter 凭据"""

@@ -152,7 +152,28 @@ automation.run(
 )
 ```
 
-### 方式四：直接运行
+### 方式四：命令行运行（推荐）
+
+```bash
+# 登录所有 AnyRouter 用户（从 config/users.json 读取）
+python -m src anyrouter
+
+# 只登录指定 login_type 的用户
+python -m src anyrouter --user github_oauth
+python -m src anyrouter --user linuxdo_oauth
+python -m src anyrouter --user credentials
+
+# 无头模式运行
+python -m src anyrouter --headless
+
+# 跳过 Cookie 登录
+python -m src anyrouter --no-cookie
+
+# 组合使用
+python -m src anyrouter --user github_oauth --headless
+```
+
+### 方式五：直接运行模块
 
 ```bash
 python -m src.sites.anyrouter.login

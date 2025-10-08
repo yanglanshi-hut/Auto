@@ -58,6 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     _add_common_options(sp_any)
+    sp_any.add_argument(
+        "--user",
+        dest="user",
+        help="Specific login_type from config/users.json (e.g., 'github_oauth', 'linuxdo_oauth', 'credentials')",
+    )
     sp_any.set_defaults(handler=_handle_anyrouter)
 
     # linuxdo 子命令
@@ -130,6 +135,23 @@ def _handle_anyrouter(args: argparse.Namespace) -> int:
                 print("未找到 AnyRouter 用户配置")
                 print("请在 config/users.json 中添加 AnyRouter 配置")
                 return 1
+        
+        # 如果指定了 --user，只处理该 login_type 的用户
+        if args.user:
+            target_login_type = args.user.lower()
+            filtered_users = [
+                u for u in all_users 
+                if u.get('login_type', 'linuxdo_oauth').lower() == target_login_type
+            ]
+            
+            if not filtered_users:
+                print(f"未找到 login_type 为 '{args.user}' 的 AnyRouter 用户")
+                available_types = set(u.get('login_type', 'linuxdo_oauth') for u in all_users)
+                print(f"可用的 login_type: {', '.join(available_types)}")
+                return 1
+            
+            all_users = filtered_users
+            print(f"使用单用户模式，login_type: {args.user}")
         
         print(f"找到 {len(all_users)} 个 AnyRouter 用户配置")
         
