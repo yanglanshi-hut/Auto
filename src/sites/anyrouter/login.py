@@ -15,6 +15,61 @@ from src.core.paths import get_project_paths
 logger = setup_logger("anyrouter", get_project_paths().logs / "anyrouter.log")
 
 
+# 选择器常量（保持既有逻辑不变）
+EMAIL_INPUT_SELECTORS = [
+    'input[type="email"]',
+    'input[name="email"]',
+    'input[placeholder*="邮箱"]',
+    'input[placeholder*="Email"]',
+]
+
+PASSWORD_SUBMIT_SELECTORS = [
+    'button[type="submit"]',
+    'button:has-text("登录")',
+    'button:has-text("Login")',
+    'button:has-text("Sign in")',
+]
+
+GITHUB_OAUTH_BUTTON_SELECTORS = (
+    'button:has-text("使用 GitHub 继续")',
+    'button:has-text("使用 GitHub 登录")',
+    'text=使用 GitHub 继续',
+    'text=使用 GitHub 登录',
+    'role=button[name="使用 GitHub 继续"]',
+    'role=button[name="使用 GitHub 登录"]',
+)
+
+LINUXDO_OAUTH_BUTTON_SELECTORS = (
+    'button:has-text("使用 LinuxDO 继续")',
+    'button:has-text("使用 LinuxDO 登录")',
+    'text=使用 LinuxDO 继续',
+    'text=使用 LinuxDO 登录',
+    'role=button[name="使用 LinuxDO 继续"]',
+    'role=button[name="使用 LinuxDO 登录"]',
+)
+
+GITHUB_AUTHORIZE_SELECTORS = [
+    'button[type="submit"]:has-text("Authorize")',
+    'button:has-text("Authorize")',
+    'input[type="submit"][value*="Authorize"]',
+]
+
+LINUXDO_ALLOW_BUTTON_SELECTORS = (
+    'role=link[name="允许"]',
+    'role=button[name="允许"]',
+    'text=允许',
+)
+
+ANNOUNCEMENT_POPUP_SELECTORS = (
+    'role=button[name="Close Today"]',
+    'role=button[name="Close Notice"]',
+    'text=今日关闭',
+    'text=关闭公告',
+    'button:has-text("今日关闭")',
+    'button:has-text("关闭公告")',
+)
+
+
 class AnyrouterLogin(LoginAutomation):
     """AnyRouter 登录自动化类（支持多用户）"""
     
@@ -83,25 +138,7 @@ class AnyrouterLogin(LoginAutomation):
             
             # 填写邮箱
             logger.info("填写邮箱...")
-            email_selectors = [
-                'input[type="email"]',
-                'input[name="email"]',
-                'input[placeholder*="邮箱"]',
-                'input[placeholder*="Email"]',
-            ]
-            
-            email_filled = False
-            for selector in email_selectors:
-                try:
-                    email_input = page.locator(selector).first
-                    if email_input.count() > 0:
-                        email_input.fill(email)
-                        email_filled = True
-                        break
-                except Exception:
-                    continue
-            
-            if not email_filled:
+            if not self._fill_first_available(page, EMAIL_INPUT_SELECTORS, email):
                 logger.error("未找到邮箱输入框")
                 return False
             
@@ -115,23 +152,7 @@ class AnyrouterLogin(LoginAutomation):
             
             # 提交登录
             logger.info("提交登录...")
-            submit_selectors = [
-                'button[type="submit"]',
-                'button:has-text("登录")',
-                'button:has-text("Login")',
-                'button:has-text("Sign in")',
-            ]
-            
-            submitted = False
-            for selector in submit_selectors:
-                try:
-                    page.locator(selector).first.click(timeout=5000)
-                    submitted = True
-                    break
-                except Exception:
-                    continue
-            
-            if not submitted:
+            if not self._click_first_available(page, PASSWORD_SUBMIT_SELECTORS):
                 logger.error("未找到登录提交按钮")
                 return False
             
@@ -224,32 +245,10 @@ class AnyrouterLogin(LoginAutomation):
         # 等待页面稳定
         page.wait_for_timeout(1000)
         logger.info("开始查找 GitHub OAuth 按钮...")
-        
-        oauth_buttons = (
-            'button:has-text("使用 GitHub 继续")',
-            'button:has-text("使用 GitHub 登录")',
-            'text=使用 GitHub 继续',
-            'text=使用 GitHub 登录',
-            'role=button[name="使用 GitHub 继续"]',
-            'role=button[name="使用 GitHub 登录"]',
-        )
-        
-        for selector in oauth_buttons:
-            try:
-                logger.debug(f"尝试选择器: {selector}")
-                buttons = page.locator(selector)
-                count = buttons.count()
-                if count > 0:
-                    logger.info(f"找到 {count} 个匹配的按钮: {selector}")
-                    with page.expect_popup(timeout=3000) as popup_info:
-                        buttons.first.click(timeout=5000)
-                    auth_page = popup_info.value
-                    auth_page.wait_for_load_state('domcontentloaded')
-                    logger.info(f"GitHub OAuth 窗口已打开: {auth_page.url}")
-                    return auth_page
-            except Exception as e:
-                logger.debug(f"选择器 {selector} 失败: {e}")
-                continue
+        auth_page = self._find_and_open_popup(page, GITHUB_OAUTH_BUTTON_SELECTORS)
+        if auth_page:
+            logger.info(f"GitHub OAuth 窗口已打开: {auth_page.url}")
+            return auth_page
         
         # 第一次未找到按钮，尝试刷新页面（与 LinuxDO 保持一致）
         logger.info("未找到 GitHub OAuth 按钮，尝试刷新页面...")
@@ -259,20 +258,10 @@ class AnyrouterLogin(LoginAutomation):
         page.wait_for_timeout(300)
         
         # 再次尝试查找并点击按钮
-        for selector in oauth_buttons:
-            try:
-                buttons = page.locator(selector)
-                count = buttons.count()
-                if count > 0:
-                    logger.info(f"找到 {count} 个匹配的按钮: {selector}")
-                    with page.expect_popup(timeout=3000) as popup_info:
-                        buttons.first.click(timeout=5000)
-                    auth_page = popup_info.value
-                    auth_page.wait_for_load_state('domcontentloaded')
-                    logger.info(f"GitHub OAuth 窗口已打开: {auth_page.url}")
-                    return auth_page
-            except Exception:
-                continue
+        auth_page = self._find_and_open_popup(page, GITHUB_OAUTH_BUTTON_SELECTORS)
+        if auth_page:
+            logger.info(f"GitHub OAuth 窗口已打开: {auth_page.url}")
+            return auth_page
         
         logger.warning("刷新后仍未找到可用的 GitHub OAuth 按钮")
         logger.info(f"当前页面 URL: {page.url}")
@@ -289,25 +278,10 @@ class AnyrouterLogin(LoginAutomation):
         page.wait_for_timeout(300)
         
         # 点击 OAuth 按钮并捕获新窗口
-        oauth_buttons = (
-            'button:has-text("使用 LinuxDO 继续")',
-            'button:has-text("使用 LinuxDO 登录")',
-            'text=使用 LinuxDO 继续',
-            'text=使用 LinuxDO 登录',
-            'role=button[name="使用 LinuxDO 继续"]',
-            'role=button[name="使用 LinuxDO 登录"]',
-        )
-        
-        for selector in oauth_buttons:
-            try:
-                with page.expect_popup(timeout=3000) as popup_info:
-                    page.locator(selector).first.click(timeout=5000)
-                auth_page = popup_info.value
-                auth_page.wait_for_load_state('domcontentloaded')
-                logger.info(f"OAuth 窗口已打开: {auth_page.url}")
-                return auth_page
-            except Exception:
-                continue
+        auth_page = self._find_and_open_popup(page, LINUXDO_OAUTH_BUTTON_SELECTORS)
+        if auth_page:
+            logger.info(f"OAuth 窗口已打开: {auth_page.url}")
+            return auth_page
         
         # 第一次未找到按钮，尝试刷新页面
         logger.info("未找到 OAuth 按钮，尝试刷新页面...")
@@ -317,16 +291,10 @@ class AnyrouterLogin(LoginAutomation):
         page.wait_for_timeout(300)
         
         # 再次尝试查找并点击按钮
-        for selector in oauth_buttons:
-            try:
-                with page.expect_popup(timeout=3000) as popup_info:
-                    page.locator(selector).first.click(timeout=5000)
-                auth_page = popup_info.value
-                auth_page.wait_for_load_state('domcontentloaded')
-                logger.info(f"OAuth 窗口已打开: {auth_page.url}")
-                return auth_page
-            except Exception:
-                continue
+        auth_page = self._find_and_open_popup(page, LINUXDO_OAUTH_BUTTON_SELECTORS)
+        if auth_page:
+            logger.info(f"OAuth 窗口已打开: {auth_page.url}")
+            return auth_page
         
         logger.warning("刷新后仍未找到可用的 OAuth 按钮")
         return None
@@ -466,13 +434,7 @@ class AnyrouterLogin(LoginAutomation):
             return True
         
         # 检查是否需要授权（首次授权或权限更新）
-        authorize_selectors = [
-            'button[type="submit"]:has-text("Authorize")',
-            'button:has-text("Authorize")',
-            'input[type="submit"][value*="Authorize"]',
-        ]
-        
-        for selector in authorize_selectors:
+        for selector in GITHUB_AUTHORIZE_SELECTORS:
             try:
                 auth_page.locator(selector).first.click(timeout=5000)
                 logger.info("已点击 GitHub 授权")
@@ -503,13 +465,7 @@ class AnyrouterLogin(LoginAutomation):
                 pass
         
         # 点击"允许"
-        allow_buttons = (
-            'role=link[name="允许"]',
-            'role=button[name="允许"]',
-            'text=允许',
-        )
-        
-        for selector in allow_buttons:
+        for selector in LINUXDO_ALLOW_BUTTON_SELECTORS:
             try:
                 auth_page.locator(selector).first.click(timeout=5000)
                 logger.info("已点击允许授权")
@@ -551,17 +507,8 @@ class AnyrouterLogin(LoginAutomation):
 
     def _close_popup_if_exists(self, page: Page) -> None:
         """关闭公告弹窗（如存在）"""
-        popup_selectors = (
-            'role=button[name="Close Today"]',
-            'role=button[name="Close Notice"]',
-            'text=今日关闭',
-            'text=关闭公告',
-            'button:has-text("今日关闭")',
-            'button:has-text("关闭公告")',
-        )
-        
         closed_count = 0
-        for selector in popup_selectors:
+        for selector in ANNOUNCEMENT_POPUP_SELECTORS:
             try:
                 buttons = page.locator(selector)
                 count = buttons.count()
@@ -629,6 +576,42 @@ class AnyrouterLogin(LoginAutomation):
         except Exception:
             pass
         return page
+
+    def _find_and_open_popup(self, page: Page, selectors) -> Optional[Page]:
+        """遍历选择器，点击并等待弹出的 OAuth 窗口，返回新页面。"""
+        for selector in selectors:
+            try:
+                buttons = page.locator(selector)
+                count = buttons.count()
+                if count > 0:
+                    with page.expect_popup(timeout=3000) as popup_info:
+                        buttons.first.click(timeout=5000)
+                    auth_page = popup_info.value
+                    auth_page.wait_for_load_state('domcontentloaded')
+                    return auth_page
+            except Exception:
+                continue
+        return None
+
+    def _fill_first_available(self, page: Page, selectors, value: str) -> bool:
+        for selector in selectors:
+            try:
+                el = page.locator(selector).first
+                if el.count() > 0:
+                    el.fill(value)
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _click_first_available(self, page: Page, selectors, click_timeout: int = 5000) -> bool:
+        for selector in selectors:
+            try:
+                page.locator(selector).first.click(timeout=click_timeout)
+                return True
+            except Exception:
+                continue
+        return False
 
     def _get_credentials(self) -> tuple[str, str]:
         """获取 AnyRouter 凭据"""
