@@ -901,6 +901,7 @@ class ShareyourccLogin(LoginAutomation):
                 try:
                     elements = page.locator(btn_selector)
                     count = elements.count()
+                    page.wait_for_timeout(3000)
                     if count > 0:
                         logger.info(f"找到开始抽奖按钮: {btn_selector} (共{count}个)")
                         for i in range(count):
@@ -927,7 +928,7 @@ class ShareyourccLogin(LoginAutomation):
             else:
                 # 等待3秒查看抽奖结果
                 logger.info("等待抽奖结果...")
-                page.wait_for_timeout(5000)
+                page.wait_for_timeout(7000)
                 logger.info("抽奖操作完成")
             
             # 返回仪表板

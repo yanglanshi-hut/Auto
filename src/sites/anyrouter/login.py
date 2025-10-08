@@ -462,6 +462,7 @@ class AnyrouterLogin(LoginAutomation):
         # 如果不在 GitHub 域，说明已跳转，无需授权
         if 'github.com' not in auth_page.url:
             logger.info("已跳转，跳过 GitHub 授权确认")
+            auth_page.wait_for_timeout(2000)
             return True
         
         # 检查是否需要授权（首次授权或权限更新）
