@@ -46,6 +46,7 @@ class CookieManager:
             metadata: 可选的元数据，如 {"login_type": "credentials", "email": "user@example.com"}
         """
         cookies = context.cookies()
+        cookies = self._sanitize_cookies(site_name, cookies)
         payload = {
             "cookies": cookies,
             "saved_at": datetime.now().isoformat(),
@@ -98,6 +99,7 @@ class CookieManager:
                 return False
 
         cookies, saved_at = self._parse_cookie_payload(data, cookie_path)
+        cookies = self._sanitize_cookies(site_name, cookies)
         if not cookies:
             return False
 
@@ -146,3 +148,39 @@ class CookieManager:
                 saved_at = None
 
         return cookies or [], saved_at
+
+    def _sanitize_cookies(self, site_name: str, cookies: list) -> list:
+        """根据站点名称对 Cookie 进行清洗，移除易失或无关条目。
+
+        - anyrouter 系列：仅保留 anyrouter 域（anyrouter.top/anyrouter.cc）的 Cookie，
+          并移除易失/防护类 Cookie（如 acw_*/cdn_sec_tc/cf_clearance）。
+        其他站点：不做处理（原样返回）。
+        """
+        try:
+            if not cookies:
+                return []
+
+            if site_name.startswith("anyrouter"):
+                allow_suffixes = ("anyrouter.top", "anyrouter.cc")
+                drop_names = {"acw_tc", "cdn_sec_tc", "acw_sc__v2", "cf_clearance"}
+
+                filtered = []
+                for ck in cookies:
+                    name = ck.get("name") or ""
+                    domain = (ck.get("domain") or "").lstrip(".")
+
+                    # 仅保留 anyrouter 域
+                    if not any(domain.endswith(suf) for suf in allow_suffixes):
+                        continue
+
+                    # 移除易失/防护类 Cookie
+                    if name in drop_names:
+                        continue
+
+                    filtered.append(ck)
+                return filtered
+
+            return cookies
+        except Exception:
+            # 出现异常时，返回原始 cookies，避免影响登录主流程
+            return cookies
