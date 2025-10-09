@@ -1,5 +1,8 @@
 # Claude Code 配置目录
-.claude/
+# 默认忽略 .claude 下所有文件，但允许提交命令文件，避免敏感配置入库
+.claude/*
+!.claude/commands/
+!.claude/commands/**
 
 # 运行时数据目录（整个 data/ 目录都应该被忽略）
 data/
