@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
-"""批量刷新多用户 Cookie 的脚本。
+"""批量刷新多用户 Cookie 的脚本（并发版）
 
 - 检测各用户 Cookie 文件年龄
 - 超过阈值(>20天)或 --force 时触发登录刷新
 - 支持 --dry-run 仅检测不执行刷新
+- 使用 ProcessPoolExecutor 并发处理（默认 3 workers）
+
+变更说明：
+- 将串行循环改为 `ProcessPoolExecutor` 并发执行。
+- 提取 `refresh_single_user(user_data: tuple) -> dict` 便于子进程执行。
 """
 
 from __future__ import annotations
@@ -12,11 +17,12 @@ import argparse
 import logging
 import os
 import sys
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
-# 允许脚本直接执行时找到本地 src 包
+# 允许脚本直接执行时找到本地 src
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.abspath(os.path.join(_HERE, ".."))
 if _ROOT not in sys.path:
@@ -54,18 +60,19 @@ def setup_logging() -> Path:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="刷新所有用户的 Cookie")
+    parser = argparse.ArgumentParser(description="刷新所有用户的 Cookie（并发版）")
     parser.add_argument("--force", action="store_true", help="强制刷新所有 Cookie（忽略年龄检查）")
     parser.add_argument("--dry-run", action="store_true", help="仅检测，不执行刷新")
     parser.add_argument("--site", help="仅处理指定站点，例如 openi 或 linuxdo")
     parser.add_argument("--user", help="仅处理指定用户名/邮箱")
+    parser.add_argument("--workers", type=int, default=3, help="并发进程数，默认 3")
     return parser.parse_args()
 
 
 def load_users(cfg_mgr: UnifiedConfigManager) -> Dict:
     data = cfg_mgr._load_once()
     if not isinstance(data, dict):
-        return {"users": [], "config": {}}
+        return {"users": [], "defaults": {}, "sites": {}}
     return data
 
 
@@ -130,9 +137,11 @@ def refresh_openi(user: Dict, config_data: Dict, cookie_expire_override: int = 0
 
     try:
         cfg = load_config()
-        cfg_config = cfg.get("config", {})
+        cfg_defaults = cfg.get("defaults", {})
+        cfg_sites = cfg.get("sites", {})
     except Exception:
-        cfg_config = config_data.get("config", {}) if isinstance(config_data, dict) else {}
+        cfg_defaults = config_data.get("defaults", {}) if isinstance(config_data, dict) else {}
+        cfg_sites = config_data.get("sites", {}) if isinstance(config_data, dict) else {}
 
     username = user.get("username")
     password = user.get("password")
@@ -140,9 +149,10 @@ def refresh_openi(user: Dict, config_data: Dict, cookie_expire_override: int = 0
         logging.error("缺少 OpenI 用户名或密码")
         return False
 
-    task_name = cfg_config.get("task_name", "image")
-    run_duration = int(cfg_config.get("run_duration", 15))
-    default_expire = int(cfg_config.get("cookie_expire_days", 30))
+    site_cfg = cfg_sites.get("openi", {}) if isinstance(cfg_sites, dict) else {}
+    task_name = site_cfg.get("task_name", "image")
+    run_duration = int(site_cfg.get("run_duration", 15))
+    default_expire = int(cfg_defaults.get("cookie_expire_days", 30))
 
     try:
         automation = OpeniLogin(
@@ -165,6 +175,48 @@ def refresh_openi(user: Dict, config_data: Dict, cookie_expire_override: int = 0
         return False
 
 
+def refresh_single_user(user_data: tuple) -> Dict:
+    """子进程执行的刷新函数。
+
+    参数打包为 tuple 以明确进程间传递：
+        (user: Dict, config_data: Dict, force: bool, dry_run: bool)
+
+    返回结果字典：{"site", "who", "ok", "skipped"}
+    """
+    user, config_data, force, dry_run = user_data
+    site, cookie_path = cookie_info_for_user(user)
+    who = user.get("username") or user.get("email") or "<unknown>"
+
+    # 年龄检查（在子进程执行，减少主进程 I/O）
+    if not cookie_path.exists():
+        need_refresh = True
+        age = None
+    else:
+        try:
+            age = file_age_days(cookie_path)
+        except Exception:
+            age = None
+        need_refresh = (age is None) or (age > 20.0) or bool(force)
+
+    if dry_run:
+        return {"site": site, "who": who, "ok": need_refresh, "skipped": not need_refresh}
+
+    if not need_refresh:
+        return {"site": site, "who": who, "ok": False, "skipped": True}
+
+    try:
+        if site == "linuxdo":
+            ok = refresh_linuxdo(cookie_expire_override=0)
+        elif site == "openi":
+            ok = refresh_openi(user, config_data, cookie_expire_override=0)
+        else:
+            ok = False
+    except Exception:
+        ok = False
+
+    return {"site": site, "who": who, "ok": bool(ok), "skipped": False}
+
+
 def main() -> int:
     args = parse_args()
     log_file = setup_logging()
@@ -183,49 +235,45 @@ def main() -> int:
         return 0
 
     refreshed, skipped, failed = 0, 0, 0
-    for idx, user in enumerate(targets, 1):
-        site, cookie_path = cookie_info_for_user(user)
-        who = user.get("username") or user.get("email") or "<unknown>"
-        logging.info(f"[{idx}/{len(targets)}] 检查: site={site}, 用户={who}")
 
-        if not cookie_path.exists():
-            logging.info("Cookie 文件不存在，视为需要刷新")
-            need_refresh = True
-            age = None
-        else:
-            age = file_age_days(cookie_path)
-            logging.info(f"Cookie 文件: {cookie_path}，年龄约 {age:.1f} 天")
-            need_refresh = age > 20.0 or args.force
+    # 并发提交任务
+    with ProcessPoolExecutor(max_workers=args.workers or 3) as executor:
+        futures = [
+            executor.submit(
+                refresh_single_user,
+                (user, data, args.force, args.dry_run),
+            )
+            for user in targets
+        ]
 
-        if args.dry_run:
-            logging.info("[Dry-Run] %s", "准备刷新" if need_refresh else "跳过")
-            skipped += 0 if need_refresh else 1
-            refreshed += 1 if need_refresh else 0
-            continue
+        for idx, fut in enumerate(futures, 1):
+            try:
+                result = fut.result()
+            except Exception as exc:  # pragma: no cover
+                logging.error(f"任务[{idx}] 执行异常: {exc}")
+                failed += 1
+                continue
 
-        if not need_refresh:
-            logging.info("年龄未超过阈值，跳过")
-            skipped += 1
-            continue
+            who = result.get("who")
+            site = result.get("site")
+            ok = result.get("ok")
+            was_skipped = result.get("skipped")
 
-        try:
-            if site == "linuxdo":
-                ok = refresh_linuxdo(cookie_expire_override=0)
-            elif site == "openi":
-                ok = refresh_openi(user, data, cookie_expire_override=0)
+            if args.dry_run:
+                logging.info(f"[Dry-Run] 用户={who} site={site} -> {'刷新' if ok else '跳过'}")
+                refreshed += 1 if ok else 0
+                skipped += 0 if ok else 1
+                continue
+
+            if was_skipped:
+                logging.info(f"[跳过] 用户={who} site={site}")
+                skipped += 1
+            elif ok:
+                logging.info(f"[完成] 用户={who} site={site}")
+                refreshed += 1
             else:
-                logging.warning(f"未知站点，跳过: {site}")
-                ok = False
-        except Exception as exc:  # noqa: BLE001
-            logging.error(f"刷新用户 {who} 出错: {exc}")
-            ok = False
-
-        if ok:
-            logging.info("刷新完成")
-            refreshed += 1
-        else:
-            logging.error("刷新失败")
-            failed += 1
+                logging.error(f"[失败] 用户={who} site={site}")
+                failed += 1
 
     logging.info(f"完成。刷新 {refreshed} 个，跳过 {skipped} 个，失败 {failed} 个")
     return 0 if failed == 0 else 1
@@ -233,3 +281,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

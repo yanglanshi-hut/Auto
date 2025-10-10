@@ -1,12 +1,4 @@
 {
-  "config": {
-    "task_name": "image",
-    "run_duration": 15,
-    "headless": false,
-    "use_cookies": true,
-    "cookie_expire_days": 7
-  },
-
   "users": [
     {
       "site": "openi",
@@ -28,5 +20,16 @@
       "email": "AnyRouter邮箱@example.com",
       "password": "密码"
     }
-  ]
+  ],
+  "defaults": {
+    "cookie_expire_days": 30,
+    "headless": true,
+    "use_cookies": true
+  },
+  "sites": {
+    "openi": {
+      "task_name": "image",
+      "run_duration": 15
+    }
+  }
 }

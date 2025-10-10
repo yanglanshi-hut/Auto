@@ -1,4 +1,10 @@
-"""登录自动化脚本共享的基类。"""
+"""登录自动化脚本共享的基类
+
+变更说明：
+- 修复所有裸 `except Exception: pass`，统一记录警告日志以便排查问题。
+- 将 `cookie_expire_days` 默认值从 7 改为 30 天。
+- 引入项目内置 `logger`，为不同站点创建独立日志文件。
+"""
 
 from __future__ import annotations
 
@@ -10,6 +16,7 @@ from playwright.sync_api import Page
 
 from src.core.browser import BrowserManager
 from src.core.cookies import CookieManager
+from src.core.logger import setup_logger
 from src.core.paths import get_project_paths
 
 
@@ -24,7 +31,7 @@ class LoginAutomation(abc.ABC):
         cookie_dir: Optional[Path] = None,
         browser_kwargs: Optional[Dict[str, Any]] = None,
         context_kwargs: Optional[Dict[str, Any]] = None,
-        cookie_expire_days: int = 7,
+        cookie_expire_days: int = 30,  # 默认改为 30 天
     ) -> None:
         self.site_name = site_name
         self.headless = headless
@@ -34,6 +41,13 @@ class LoginAutomation(abc.ABC):
 
         self.cookie_manager = CookieManager(cookie_dir)
         self.browser_manager = BrowserManager()
+
+        # 初始化站点级日志器：login.<site_name>
+        logs_dir = get_project_paths().logs
+        self.logger = setup_logger(
+            f"login.{site_name}",
+            logs_dir / f"login_{site_name}.log",
+        )
 
         self.browser = None
         self.context = None
@@ -56,19 +70,19 @@ class LoginAutomation(abc.ABC):
         if verify_url:
             try:
                 page.goto(verify_url, timeout=60000)
-                page.wait_for_load_state('domcontentloaded')
-            except Exception:
-                pass
+                page.wait_for_load_state("domcontentloaded")
+            except Exception as e:  # 记录失败原因，避免静默
+                self.logger.warning(f"跳转验证页失败: {e}")
         else:
             try:
                 page.reload()
-            except Exception:
-                pass
+            except Exception as e:
+                self.logger.warning(f"页面刷新失败: {e}")
 
         try:
             page.wait_for_timeout(2000)
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.warning(f"等待页面稳定失败: {e}")
 
         return self.verify_login(page)
 
@@ -116,14 +130,16 @@ class LoginAutomation(abc.ABC):
 
             return login_success
         except Exception:
+            # 保持原有行为：保存错误截图并向上传播异常
             self.browser_manager.save_error_screenshot(self.page, self._error_screenshot_path())
             raise
         finally:
             try:
                 if self.context is not None:
                     self.context.close()
-            except Exception:
-                pass
+            except Exception as e:
+                # 关闭上下文失败也需要可见日志
+                self.logger.warning(f"关闭浏览器上下文失败: {e}")
 
             self.browser_manager.close(self.browser)
             self.browser = None
@@ -132,6 +148,7 @@ class LoginAutomation(abc.ABC):
 
     def _error_screenshot_path(self) -> str:
         """为失败情况创建一个文件系统安全的截图路径。"""
-        safe_name = self.site_name.replace('/', '_').replace('\\', '_')
+        safe_name = self.site_name.replace("/", "_").replace("\\", "_")
         screenshots_dir = get_project_paths().screenshots
         return str((screenshots_dir / f"{safe_name}_error_screenshot.png").resolve())
+

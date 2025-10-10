@@ -1,7 +1,10 @@
-"""OpenI 站点的云脑任务交互。
+"""OpenI 站点的云脑任务交互
 
-本模块提供 `CloudTaskManager`，封装查看仪表盘信息、导航至云脑任务页面，
-以及启动或停止任务的逻辑。
+变更说明：
+- 将硬编码的 `page.wait_for_timeout(...)` 替换为构造参数：
+  - `wait_timeout`（默认 2000ms）
+  - `search_timeout`（默认 3000ms）
+  - `click_timeout`（默认 5000ms）
 """
 
 from __future__ import annotations
@@ -21,9 +24,21 @@ logger = setup_logger("openi.cloud_task", get_project_paths().logs / "openi_auto
 class CloudTaskManager:
     """OpenI 云脑任务的高层操作封装。"""
 
-    def __init__(self, task_name: str, run_duration: int = 5) -> None:
+    def __init__(
+        self,
+        task_name: str,
+        run_duration: int = 5,
+        *,
+        wait_timeout: int = 2000,
+        search_timeout: int = 3000,
+        click_timeout: int = 5000,
+    ) -> None:
         self.task_name = task_name
         self.run_duration = run_duration
+        # 新增可配置超时时间
+        self.wait_timeout = wait_timeout
+        self.search_timeout = search_timeout
+        self.click_timeout = click_timeout
 
     # ----- 仪表盘辅助 -----
     def show_dashboard_info(self, page: Page) -> None:
@@ -50,11 +65,11 @@ class CloudTaskManager:
         logger.info("已进入云脑任务页面")
 
         logger.info("检查并关闭云脑任务页面弹窗...")
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(self.wait_timeout)
 
         logger.info("\n云脑任务信息:")
         try:
-            task_count = page.get_by_text('共 3 个')
+            task_count = page.get_by_text('？|?3 ?')  # 保留原逻辑的弱选择器
             if task_count.is_visible():
                 logger.info(f"  - {task_count.inner_text()}")
         except Exception:
@@ -108,11 +123,11 @@ class CloudTaskManager:
         search_input = page.get_by_role('textbox', name='搜索任务名称')
         search_input.fill(self.task_name)
         search_input.press('Enter')
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(self.search_timeout)
         logger.info("搜索完成")
 
         logger.info("\n检查任务状态...")
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(self.wait_timeout)
         task_status = self.get_task_status(page)
         if task_status:
             logger.info(f"  - 当前任务状态 {task_status}")
@@ -124,13 +139,13 @@ class CloudTaskManager:
 
         if task_status in ['STOPPED', None]:
             logger.info("\n点击'再次调试'按钮...")
-            page.wait_for_timeout(3000)
+            page.wait_for_timeout(self.search_timeout)
             try:
                 debug_again_button = page.get_by_role('link', name='再次调试')
                 debug_again_button.wait_for(state='visible', timeout=10000)
                 if debug_again_button.is_enabled():
                     debug_again_button.click()
-                    logger.info("  - 已点击'再次调试'")
+                    logger.info("  - 已点击 '再次调试'")
                 else:
                     logger.warning("  - '再次调试'按钮被禁用，跳过任务启动")
                     return
@@ -138,7 +153,7 @@ class CloudTaskManager:
                 logger.error(f"  - 无法点击'再次调试'按钮: {exc}")
                 return
 
-            page.wait_for_timeout(5000)
+            page.wait_for_timeout(self.click_timeout)
             running_ok = self.wait_for_task_status(page, 'RUNNING', timeout=60)
 
             if running_ok:
@@ -148,7 +163,7 @@ class CloudTaskManager:
                 logger.warning("\n任务启动超时，尝试停止任务...")
 
             self.stop_task(page, wait_for_stopped=False)
-            page.wait_for_timeout(2000)
+            page.wait_for_timeout(self.wait_timeout)
             logger.info("任务操作完成")
 
 

@@ -1,4 +1,9 @@
-"""登录自动化脚本的 Cookie 管理工具。"""
+"""Cookie 管理工具（已清理 legacy 路径）
+
+变更说明：
+- 删除 `_legacy_path()` 与 `_existing_path()`，仅保留统一命名 `{site_name}_cookies.json`。
+- 调用方可通过自定义 `site_name`（如 `openi_<username>`）来区分不同账号。
+"""
 
 from __future__ import annotations
 
@@ -6,6 +11,7 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Tuple
+
 from src.core.paths import get_project_paths
 
 
@@ -15,33 +21,16 @@ class CookieManager:
     def __init__(self, base_dir: Optional[Path] = None) -> None:
         """初始化 Cookie 管理器。
 
-        若未提供 `base_dir`，则默认使用 `ProjectPaths.cookies`。
+        若未提供 `base_dir`，默认使用 `ProjectPaths.cookies`。
         """
-        if base_dir is None:
-            self.base_dir = get_project_paths().cookies
-        else:
-            self.base_dir = Path(base_dir)
+        self.base_dir = Path(base_dir) if base_dir is not None else get_project_paths().cookies
 
     def _cookie_path(self, site_name: str) -> Path:
+        # 统一文件命名
         return (self.base_dir / f"{site_name}_cookies.json").resolve()
 
-    def _legacy_path(self, site_name: str) -> Path:
-        return (self.base_dir / f"{site_name}.json").resolve()
-
-    def _existing_path(self, site_name: str) -> Optional[Path]:
-        cookie_path = self._cookie_path(site_name)
-        if cookie_path.exists():
-            return cookie_path
-        legacy_path = self._legacy_path(site_name)
-        if legacy_path.exists():
-            return legacy_path
-        return None
-
     def get_cookie_path(self, site_name: str) -> Path:
-        """返回首选路径，若存在旧版路径则回退使用。"""
-        existing = self._existing_path(site_name)
-        if existing:
-            return existing
+        """返回标准化后的 Cookie 文件路径。"""
         return self._cookie_path(site_name)
 
     def save_cookies(self, context, site_name: str) -> Path:
@@ -53,27 +42,16 @@ class CookieManager:
         }
 
         cookie_path = self._cookie_path(site_name)
-        legacy_path = self._legacy_path(site_name)
-
-        target_path = cookie_path
-        if legacy_path.exists() and not cookie_path.exists():
-            target_path = legacy_path
-
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        with target_path.open("w", encoding="utf-8") as handle:
+        cookie_path.parent.mkdir(parents=True, exist_ok=True)
+        with cookie_path.open("w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
 
-        # 若两个路径同时存在，则保持旧版文件同步
-        if target_path is cookie_path and legacy_path.exists():
-            with legacy_path.open("w", encoding="utf-8") as handle:
-                json.dump(payload, handle, ensure_ascii=False, indent=2)
-
-        return target_path
+        return cookie_path
 
     def load_cookies(self, context, site_name: str, expire_days: int = 7) -> bool:
-        """若仍然有效，则将 cookies 恢复到 Playwright 上下文。"""
-        cookie_path = self._existing_path(site_name)
-        if not cookie_path:
+        """若仍有效，则将 cookies 恢复到 Playwright 上下文。"""
+        cookie_path = self._cookie_path(site_name)
+        if not cookie_path.exists():
             return False
 
         try:
@@ -88,6 +66,7 @@ class CookieManager:
 
         if expire_days is not None and saved_at is not None:
             if datetime.now() - saved_at > timedelta(days=expire_days):
+                # 过期即清理，避免误用
                 try:
                     cookie_path.unlink()
                 except OSError:
@@ -123,3 +102,4 @@ class CookieManager:
                 saved_at = None
 
         return cookies or [], saved_at
+
