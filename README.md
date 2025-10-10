@@ -56,9 +56,7 @@ playwright install chromium
 
 ### 配置
 
-推荐使用统一配置文件方式（所有站点均支持）。环境变量仍保留作为向后兼容的备用方案。
-
-**推荐方式**：使用 `config/users.json` 统一配置（所有站点）
+使用 `config/users.json` 统一配置所有站点的凭据和参数。
 
 1. 复制配置模板：
 ```bash
@@ -68,32 +66,43 @@ cp config/users.json.example config/users.json
 2. 编辑 `config/users.json`：
 ```json
 {
-  "config": {
-    "task_name": "image",
-    "run_duration": 15,
-    "headless": false,
-    "use_cookies": true,
-    "cookie_expire_days": 30
-  },
   "users": [
     {"site": "openi", "username": "用户名1", "password": "密码1"},
     {"site": "linuxdo", "email": "邮箱@example.com", "password": "密码"},
     {"site": "anyrouter", "email": "邮箱@example.com", "password": "密码"}
-  ]
+  ],
+  "defaults": {
+    "cookie_expire_days": 30,
+    "headless": true
+  },
+  "sites": {
+    "openi": {
+      "task_name": "image",
+      "run_duration": 15
+    }
+  }
 }
 ```
+### 从旧格式迁移
 
-**备选方式**：环境变量（向后兼容）
+如果你使用的是旧版配置格式，可以使用迁移脚本自动转换：
 
 ```bash
-# LinuxDO / AnyRouter（任一可用）
-export LINUXDO_EMAIL="your_email@example.com"
-export LINUXDO_PASSWORD="your_password"
+# 查看迁移后的结果（不写入）
+python scripts/migrate_config.py --dry-run
 
-# 或 AnyRouter 专用
-export ANYROUTER_EMAIL="your_email@example.com"
-export ANYROUTER_PASSWORD="your_password"
+# 正式迁移（自动备份为 users.json.backup）
+python scripts/migrate_config.py
+
+# 查看帮助
+python scripts/migrate_config.py --help
 ```
+
+支持迁移的旧格式：
+- 旧版 users + config 格式
+- credentials 格式
+- 旧版 OpenI 单站点格式
+
 
 ### 使用
 
@@ -141,6 +150,7 @@ python -m src --help
 ./scripts/refresh_cookies.sh                 # 检测并刷新超过 20 天的 Cookie
 ./scripts/refresh_cookies.sh --dry-run       # 仅查看将要刷新哪些
 ./scripts/refresh_cookies.sh --force         # 忽略阈值，强制刷新所有目标
+./scripts/refresh_cookies.sh --workers 5     # 并发处理（默认 3）
 ./scripts/refresh_cookies.sh --site openi    # 仅处理 OpenI
 ./scripts/refresh_cookies.sh --site linuxdo  # 仅处理 LinuxDO
 ./scripts/refresh_cookies.sh --user yls      # 仅处理指定 OpenI 用户
@@ -203,84 +213,59 @@ class NewSiteLogin(LoginAutomation):
 
 ### LinuxDO
 - **登录方式**: 账号密码表单登录
-- **凭据配置**:
-  1. 优先：`config/users.json` - `users` 数组（`site: "linuxdo"`）
-  2. 回退：环境变量 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
+- **凭据配置**: `config/users.json` - `users` 数组（`site: "linuxdo"`）
 - **特性**: Cookie 快速登录、自动处理登录表单
 
 ### AnyRouter
 - **登录方式**: LinuxDO OAuth 授权
-- **凭据配置**:
-  1. 优先：`config/users.json` - `users` 数组（`site: "anyrouter"`）
-  2. 回退：环境变量 `ANYROUTER_EMAIL` / `ANYROUTER_PASSWORD` 或 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
+- **凭据配置**: `config/users.json` - `users` 数组（`site: "anyrouter"`）
 - **特性**: 自动处理授权弹窗、记住授权、导航到 API 令牌页
 
 ### OpenI
 - **登录方式**: 账号密码登录
 - **凭据配置**: `config/users.json` - `users` 数组（`site: "openi"`）
 - **特性**:
-  - 多用户批量处理
+  - 多用户批量处理（支持并发）
   - 云脑任务自动化（启动/停止任务赚取积分）
   - 每用户独立 Cookie 管理
   - 详细日志记录
-
 ## 配置说明
 
 ### 配置格式
 
-**当前格式**（推荐 - 最简洁）：
+**新格式**（当前版本）：
 ```json
 {
-  "config": {
-    "task_name": "image",
-    "run_duration": 15,
-    "headless": false,
-    "use_cookies": true,
-    "cookie_expire_days": 30
-  },
   "users": [
     {"site": "openi", "username": "u", "password": "p"},
     {"site": "linuxdo", "email": "e", "password": "p"},
     {"site": "anyrouter", "email": "e", "password": "p"}
-  ]
+  ],
+  "defaults": {
+    "cookie_expire_days": 30,
+    "headless": true
+  },
+  "sites": {
+    "openi": {
+      "task_name": "image",
+      "run_duration": 15
+    }
+  }
 }
 ```
 
 **说明**：
-- `config`: 全局配置项（所有站点共享）
 - `users`: 用户凭据列表，通过 `site` 字段区分站点
+- `defaults`: 全局默认配置（cookie 过期时间、headless 模式等）
+- `sites`: 站点特定配置（仅 OpenI 需要）
 - 支持同站点多账号：添加多个相同 `site` 的条目即可
 
-### 环境变量回退说明
+### 旧格式迁移
 
-- **LinuxDO**: 优先读取 `config/users.json`，缺失时回退到 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
-- **AnyRouter**: 优先读取 `config/users.json`，缺失时回退到 `ANYROUTER_EMAIL` / `ANYROUTER_PASSWORD`，再回退到 `LINUXDO_EMAIL` / `LINUXDO_PASSWORD`
-- **优先级总原则**: 配置文件 > 环境变量（向后兼容）
-
-### 多用户配置示例
-
-```json
-{
-  "config": {
-    "task_name": "image",
-    "run_duration": 15,
-    "headless": false,
-    "use_cookies": true,
-    "cookie_expire_days": 30
-  },
-  "users": [
-    {"site": "openi", "username": "user1", "password": "pass1"},
-    {"site": "openi", "username": "user2", "password": "pass2"},
-    {"site": "openi", "username": "user3", "password": "pass3"},
-    {"site": "linuxdo", "email": "user@example.com", "password": "pass"}
-  ]
-}
+如果你使用的是旧版配置格式，使用迁移脚本：
+```bash
+python scripts/migrate_config.py
 ```
-
-**使用**：
-- `python -m src openi` - 批量运行所有 OpenI 用户（user1, user2, user3）
-- `python -m src openi --user user1` - 只运行指定用户
-
 ## 许可证
 
 MIT License
