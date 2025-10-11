@@ -19,7 +19,7 @@ class BrowserManager:
     def launch(self, headless: bool = False, **launch_kwargs):
         """启动 Playwright 并启动一个 Chromium 浏览器。"""
         if self._playwright_cm is not None:
-            raise RuntimeError("Browser already launched for this manager")
+            raise RuntimeError("该管理器已启动浏览器")
 
         self._playwright_cm = sync_playwright()
         self._playwright = self._playwright_cm.__enter__()
@@ -41,13 +41,13 @@ class BrowserManager:
             if browser is not None:
                 browser.close()
         except Exception as e:
-            self._log_warning(f"Failed to close browser: {e}")
+            self._log_warning(f"关闭浏览器失败: {e}")
         finally:
             if self._playwright_cm is not None:
                 try:
                     self._playwright_cm.__exit__(None, None, None)
                 except Exception as e:
-                    self._log_warning(f"Failed to stop Playwright: {e}")
+                    self._log_warning(f"停止 Playwright 失败: {e}")
                 self._playwright_cm = None
                 self._playwright = None
 

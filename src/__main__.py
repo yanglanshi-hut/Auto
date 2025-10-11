@@ -32,43 +32,43 @@ def _add_common_options(sp: argparse.ArgumentParser) -> None:
     sp.add_argument(
         "--headless",
         action="store_true",
-        help="Run browser in headless mode (default: off)",
+        help="在无头模式下运行浏览器（默认：关闭）",
     )
     sp.add_argument(
         "--no-cookie",
         dest="no_cookie",
         action="store_true",
-        help="Do not attempt cookie login (default: use cookies if available)",
+        help="不尝试使用Cookie登录（默认：如果有Cookie则使用）",
     )
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m src",
-        description="Unified CLI for Auto login automation (Playwright)",
+        description="Auto 登录自动化统一命令行界面 (基于 Playwright)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    subparsers = parser.add_subparsers(dest="site", metavar="site", required=True)
+    subparsers = parser.add_subparsers(dest="site", metavar="站点", required=True)
 
     # anyrouter 子命令
     sp_any = subparsers.add_parser(
         "anyrouter",
-        help="Login to anyrouter via LinuxDO OAuth",
+        help="通过 LinuxDO OAuth 登录 AnyRouter",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     _add_common_options(sp_any)
     sp_any.add_argument(
         "--user",
         dest="user",
-        help="Specific login_type from config/users.json (e.g., 'github_oauth', 'linuxdo_oauth', 'credentials')",
+        help="指定 config/users.json 中的 login_type（例如：'github_oauth'、'linuxdo_oauth'、'credentials'）",
     )
     sp_any.set_defaults(handler=_handle_anyrouter)
 
     # linuxdo 子命令
     sp_ld = subparsers.add_parser(
         "linuxdo",
-        help="Login to linuxdo forum",
+        help="登录 LinuxDO 论坛",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     _add_common_options(sp_ld)
@@ -78,21 +78,21 @@ def build_parser() -> argparse.ArgumentParser:
     # openi 子命令
     sp_openi = subparsers.add_parser(
         "openi",
-        help="Login to OpenI; supports multi-user or a specific user",
+        help="登录 OpenI；支持多用户或指定用户",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     _add_common_options(sp_openi)
     sp_openi.add_argument(
         "--user",
         dest="user",
-        help="Specific OpenI username from config/users.json (default: all users)",
+        help="指定 config/users.json 中的 OpenI 用户名（默认：所有用户）",
     )
     sp_openi.set_defaults(handler=_handle_openi)
 
     # shareyourcc 子命令
     sp_sycc = subparsers.add_parser(
         "shareyourcc",
-        help="Login to ShareYourCC via email/password or LinuxDo OAuth",
+        help="通过邮箱/密码或 LinuxDO OAuth 登录 ShareYourCC",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     _add_common_options(sp_sycc)
@@ -101,7 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
     # github 子命令
     sp_gh = subparsers.add_parser(
         "github",
-        help="Login to GitHub",
+        help="登录 GitHub",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     _add_common_options(sp_gh)
@@ -116,7 +116,7 @@ def _handle_anyrouter(args: argparse.Namespace) -> int:
         from src.sites.anyrouter.login import AnyrouterLogin
         from src.core.config import UnifiedConfigManager
     except Exception as exc:
-        print(f"Failed to import anyrouter login module: {exc}")
+        print(f"导入 AnyRouter 登录模块失败: {exc}")
         return 2
 
     use_cookie = not args.no_cookie
@@ -193,7 +193,7 @@ def _handle_anyrouter(args: argparse.Namespace) -> int:
         return 0 if failed_count == 0 else 1
         
     except Exception as exc:
-        print(f"anyrouter multi-user login failed: {exc}")
+        print(f"AnyRouter 多用户登录失败: {exc}")
         return 1
 
 
@@ -201,7 +201,7 @@ def _handle_linuxdo(args: argparse.Namespace) -> int:
     try:
         from src.sites.linuxdo.login import login_to_linuxdo
     except Exception as exc:  # pragma: no cover - 覆盖率忽略
-        print(f"Failed to import linuxdo login module: {exc}")
+        print(f"导入 LinuxDO 登录模块失败: {exc}")
         return 2
 
     use_cookie = not args.no_cookie
@@ -212,7 +212,7 @@ def _handle_linuxdo(args: argparse.Namespace) -> int:
     except SystemExit as e:
         return int(e.code) if e.code is not None else 1
     except Exception as exc:
-        print(f"linuxdo login failed: {exc}")
+        print(f"LinuxDO 登录失败: {exc}")
         ok = False
     return 0 if ok else 1
 
@@ -223,7 +223,7 @@ def _handle_shareyourcc(args: argparse.Namespace) -> int:
         from src.sites.shareyourcc.login import ShareyourccLogin
         from src.core.config import UnifiedConfigManager
     except Exception as exc:
-        print(f"Failed to import shareyourcc login module: {exc}")
+        print(f"导入 ShareYourCC 登录模块失败: {exc}")
         return 2
 
     use_cookie = not args.no_cookie
@@ -282,7 +282,7 @@ def _handle_shareyourcc(args: argparse.Namespace) -> int:
         return 0 if failed_count == 0 else 1
         
     except Exception as exc:
-        print(f"shareyourcc multi-user login failed: {exc}")
+        print(f"shareyourcc multi-user 登录失败: {exc}")
         return 1
 
 
@@ -290,7 +290,7 @@ def _handle_github(args: argparse.Namespace) -> int:
     try:
         from src.sites.github.login import login_to_github
     except Exception as exc:
-        print(f"Failed to import github login module: {exc}")
+        print(f"导入 github login module: {exc}")
         return 2
 
     use_cookie = not args.no_cookie
@@ -300,7 +300,7 @@ def _handle_github(args: argparse.Namespace) -> int:
     except SystemExit as e:
         return int(e.code) if e.code is not None else 1
     except Exception as exc:
-        print(f"github login failed: {exc}")
+        print(f"github 登录失败: {exc}")
         ok = False
     return 0 if ok else 1
 
@@ -311,7 +311,7 @@ def _handle_openi(args: argparse.Namespace) -> int:
         try:
             from src.sites.openi.runner import main as openi_main
         except Exception as exc:  # pragma: no cover - 覆盖率忽略
-            print(f"Failed to import openi login module: {exc}")
+            print(f"导入 openi login module: {exc}")
             return 2
 
         try:
@@ -328,7 +328,7 @@ def _handle_openi(args: argparse.Namespace) -> int:
         from src.sites.openi.config import load_config
         from src.sites.openi.login import OpeniLogin
     except Exception as exc:  # pragma: no cover - 覆盖率忽略
-        print(f"Failed to import openi utilities: {exc}")
+        print(f"导入 openi utilities: {exc}")
         return 2
 
     try:
